@@ -1,0 +1,32 @@
+[package]
+name = "crpc"
+version = "0.8.0"
+edition = "2024"
+description = "Chain-aware RPC CLI — auto ABI encode/decode, 2600+ chains, Etherscan V2, batch Multicall3, and more"
+license = "MIT"
+repository = "https://github.com/sunoj/crpc"
+homepage = "https://github.com/sunoj/crpc"
+keywords = ["ethereum", "rpc", "cli", "blockchain", "web3"]
+categories = ["command-line-utilities", "cryptography::cryptocurrencies"]
+
+[dependencies]
+alloy = { version = "1", default-features = false, features = [
+    "std",
+    "provider-http",
+    "rpc-types",
+    "dyn-abi",
+    "sol-types",
+    "json-abi",
+    "contract",
+    "reqwest-rustls-tls",
+    "serde",
+] }
+clap = { version = "4", features = ["derive"] }
+eyre = "0.6"
+hex = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+toml = "0.8"
+alloy-consensus = { version = "1", default-features = false, features = ["std"] }

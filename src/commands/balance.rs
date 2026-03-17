@@ -136,6 +136,7 @@ mod tests {
     #[test]
     fn resolves_direct_address_tokens() {
         let config = crate::config::Config {
+            keys: None,
             default_provider: None,
             chains: std::collections::HashMap::new(),
             tokens: std::collections::HashMap::new(),

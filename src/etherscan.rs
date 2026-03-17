@@ -21,7 +21,15 @@ impl EtherscanClient {
     pub fn new() -> Self {
         Self {
             client: reqwest::Client::new(),
-            api_key: std::env::var("ETHERSCAN_API_KEY").ok().filter(|key| !key.is_empty()),
+            api_key: std::env::var("ETHERSCAN_API_KEY")
+                .ok()
+                .filter(|key| !key.is_empty())
+                .or_else(|| {
+                    crate::config::Config::load()
+                        .ok()
+                        .and_then(|config| config.keys.and_then(|keys| keys.etherscan))
+                        .filter(|key| !key.is_empty())
+                }),
         }
     }
 
@@ -118,11 +126,54 @@ mod tests {
     fn new_works_without_api_key() {
         let _guard = env_lock().lock().expect("lock");
         let original = std::env::var("ETHERSCAN_API_KEY").ok();
+        let original_home = std::env::var("HOME").ok();
         unsafe { std::env::remove_var("ETHERSCAN_API_KEY") };
+        unsafe { std::env::set_var("HOME", "/tmp/crpc-test-no-config") };
         let client = EtherscanClient::new();
         assert_eq!(client.api_key, None);
         if let Some(value) = original {
             unsafe { std::env::set_var("ETHERSCAN_API_KEY", value) };
+        }
+        if let Some(value) = original_home {
+            unsafe { std::env::set_var("HOME", value) };
+        } else {
+            unsafe { std::env::remove_var("HOME") };
+        }
+    }
+
+    #[test]
+    fn new_uses_config_api_key_when_env_missing() {
+        let _guard = env_lock().lock().expect("lock");
+        let original = std::env::var("ETHERSCAN_API_KEY").ok();
+        let original_home = std::env::var("HOME").ok();
+        let temp = std::env::temp_dir().join(format!(
+            "crpc-etherscan-config-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("timestamp")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&temp).expect("temp dir");
+        std::fs::write(
+            temp.join(".crpc.toml"),
+            "[keys]\netherscan = \"from-config\"\n",
+        )
+        .expect("config");
+
+        unsafe { std::env::remove_var("ETHERSCAN_API_KEY") };
+        unsafe { std::env::set_var("HOME", &temp) };
+
+        let client = EtherscanClient::new();
+        assert_eq!(client.api_key.as_deref(), Some("from-config"));
+
+        std::fs::remove_dir_all(&temp).expect("cleanup");
+        if let Some(value) = original {
+            unsafe { std::env::set_var("ETHERSCAN_API_KEY", value) };
+        }
+        if let Some(value) = original_home {
+            unsafe { std::env::set_var("HOME", value) };
+        } else {
+            unsafe { std::env::remove_var("HOME") };
         }
     }
 

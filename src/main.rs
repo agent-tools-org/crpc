@@ -252,12 +252,25 @@ pub enum Commands {
         /// Hex data to decode (0x-prefixed)
         data: String,
     },
+    /// Manage crpc configuration
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
     /// Interactive setup — configure RPC providers and chains
     Init {
         /// Write default config without prompts
         #[arg(long)]
         force: bool,
     },
+}
+
+#[derive(Subcommand)]
+pub enum ConfigAction {
+    /// Set a config value
+    Set { key: String, value: String },
+    /// Get a config value
+    Get { key: String },
 }
 
 #[tokio::main]
@@ -319,6 +332,10 @@ async fn main() -> eyre::Result<()> {
         }
         Commands::Encode { sig, args } => commands::encode::run(&sig, &args).await,
         Commands::Decode { sig, data } => commands::decode::run(&sig, &data).await,
+        Commands::Config { action } => match action {
+            ConfigAction::Set { key, value } => commands::config_cmd::run_set(&key, &value),
+            ConfigAction::Get { key } => commands::config_cmd::run_get(&key),
+        },
         Commands::Init { force } => {
             if force {
                 commands::init::run_default()

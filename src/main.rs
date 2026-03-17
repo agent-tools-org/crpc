@@ -242,6 +242,12 @@ pub enum Commands {
         /// Hex data to decode (0x-prefixed)
         data: String,
     },
+    /// Interactive setup — configure RPC providers and chains
+    Init {
+        /// Write default config without prompts
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[tokio::main]
@@ -300,5 +306,12 @@ async fn main() -> eyre::Result<()> {
         }
         Commands::Encode { sig, args } => commands::encode::run(&sig, &args).await,
         Commands::Decode { sig, data } => commands::decode::run(&sig, &data).await,
+        Commands::Init { force } => {
+            if force {
+                commands::init::run_default()
+            } else {
+                commands::init::run()
+            }
+        }
     }
 }

@@ -13,6 +13,7 @@ pub mod diff;
 pub mod encode;
 pub mod gas;
 pub mod history;
+pub mod init;
 pub mod logs;
 pub mod storage;
 pub mod trace;

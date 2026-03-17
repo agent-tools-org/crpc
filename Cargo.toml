@@ -1,11 +1,11 @@
 [package]
 name = "crpc"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 description = "Chain-aware RPC CLI — auto ABI encode/decode, 2600+ chains, Etherscan V2, batch Multicall3, and more"
 license = "MIT"
-repository = "https://github.com/sunoj/crpc"
-homepage = "https://github.com/sunoj/crpc"
+repository = "https://github.com/agent-tools-org/crpc"
+homepage = "https://github.com/agent-tools-org/crpc"
 keywords = ["ethereum", "rpc", "cli", "blockchain", "web3"]
 categories = ["command-line-utilities", "cryptography::cryptocurrencies"]
 
@@ -30,3 +30,11 @@ serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 toml = "0.8"
 alloy-consensus = { version = "1", default-features = false, features = ["std"] }
+dialoguer = { version = "0.11", default-features = false }
+
+[profile.release]
+opt-level = "z"        # optimize for size
+lto = true             # link-time optimization — eliminates dead code across crates
+codegen-units = 1      # single codegen unit — better optimization at cost of compile time
+panic = "abort"        # no unwinding tables — saves ~100KB+
+strip = true           # strip debug symbols and metadata

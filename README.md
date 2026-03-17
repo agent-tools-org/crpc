@@ -17,7 +17,9 @@ cargo install --path .
 | `call` | eth_call with auto ABI encode/decode |
 | `balance` | ERC-20 token balance query |
 | `allowance` | ERC-20 allowance check |
-| `abi` | Fetch contract ABI from Etherscan |
+| `abi` | Fetch contract ABI from Etherscan (`--raw` for JSON) |
+| `verify` | Batch verify contract addresses (code on-chain) |
+| `pools` | Discover pools from factory contract events |
 | `code` | Get contract bytecode size/existence |
 | `slot` | Read contract storage slot |
 | `block` | Get block info |
@@ -32,6 +34,7 @@ cargo install --path .
 | `chains` | List or search 2600+ chains from chainlist.org |
 | `encode` | ABI-encode a function call (offline) |
 | `decode` | ABI-decode hex data (offline) |
+| `config` | Manage persistent configuration (`set`/`get`) |
 
 ### Global flags
 
@@ -105,13 +108,49 @@ Useful for verifying if an address is a contract or EOA during DEX investigation
 
 ```bash
 crpc abi eth 0xdAC17F958D2ee523a2206206994597C13D831ec7
-# transfer(address,uint256) → (bool)
-# approve(address,uint256) → (bool)
-# balanceOf(address) → (uint256)
+# transfer(address,uint256) -> (bool)
+# approve(address,uint256) -> (bool)
+# event Transfer(address indexed,address indexed,uint256)
 # ...
+
+# Raw JSON ABI output
+crpc abi eth 0xdAC17F958D2ee523a2206206994597C13D831ec7 --raw
+# [{ "type": "function", "name": "transfer", ... }]
+
+# Also works with --json global flag
+crpc --json abi eth 0xdAC17F958D2ee523a2206206994597C13D831ec7
 ```
 
-Requires `ETHERSCAN_API_KEY`.
+Requires `ETHERSCAN_API_KEY` (via env var or `crpc config set`).
+
+### `crpc verify` — Batch verify addresses
+
+```bash
+crpc verify eth 0xdAC17F958D2ee523a2206206994597C13D831ec7 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+# Address                                    Status    Size
+# 0xdAC17F958D2ee523a2206206994597C13D831ec7 CONTRACT  10.8 KB
+# 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 EOA       -
+
+crpc verify eth 0xAddress1 0xAddress2 --json
+# [{"address":"0x...","is_contract":true,"code_size":11075}, ...]
+```
+
+### `crpc pools` — Discover pools from factory events
+
+```bash
+# Uniswap V2 factory (default: PairCreated event)
+crpc pools eth 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f --limit 5
+# Pool                                       Token0                                     Token1
+# 0xDe05cb...b744                            0xC02aaA...6Cc2 (WETH)                     0xF385fc...049a
+
+# Uniswap V3 factory with custom event
+crpc pools eth 0x1F98431c8aD98523631AE4a59f267346ea31F984 \
+  --event "PoolCreated(address indexed,address indexed,uint24,int24,address)" \
+  --from 12369621 --limit 10
+
+# JSON output
+crpc pools eth 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f --json --limit 3
+```
 
 ### `crpc slot` — Storage slot read
 
@@ -312,6 +351,10 @@ Beyond built-in chains, crpc supports **2600+ chains** via [chainlist.org](https
 Commands `abi`, `gas`, `history`, and `transfers` use the [Etherscan V2 API](https://docs.etherscan.io/etherscan-v2) — a single unified endpoint supporting 60+ chains. On L2 chains where Etherscan requires a paid plan, `gas` and `history` automatically fall back to RPC methods.
 
 ```bash
+# Option 1: persistent config (recommended)
+crpc config set etherscan_api_key your_key_here
+
+# Option 2: environment variable
 export ETHERSCAN_API_KEY=your_key_here  # free at etherscan.io/apis
 ```
 
@@ -339,6 +382,18 @@ crpc --json code base 0x...
 7. Built-in fallback RPCs
 
 When a chain has multiple providers, crpc automatically tries the next on transport errors (timeout, connection refused). Contract-level errors (reverts) do not trigger fallback.
+
+### `crpc config` — Manage persistent configuration
+
+```bash
+crpc config set etherscan_api_key YOUR_KEY
+crpc config set default_provider alchemy
+
+crpc config get etherscan_api_key
+# YOUR_KEY
+```
+
+Settings are stored in `~/.crpc.toml`. Environment variables override config values.
 
 ## Configuration
 

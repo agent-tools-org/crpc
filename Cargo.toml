@@ -1,6 +1,6 @@
 [package]
 name = "crpc"
-version = "0.9.1"
+version = "0.9.2"
 edition = "2024"
 description = "Chain-aware RPC CLI — auto ABI encode/decode, 2600+ chains, Etherscan V2, batch Multicall3, and more"
 license = "MIT"

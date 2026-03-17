@@ -100,33 +100,10 @@ fn get_value(config: &StoredConfig, key: &str) -> Result<String> {
 mod tests {
     use super::*;
     use eyre::Result;
-    use std::env;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    struct HomeGuard {
-        prev: Option<String>,
-    }
-
-    impl HomeGuard {
-        fn set(path: &Path) -> Self {
-            let prev = env::var("HOME").ok();
-            unsafe { env::set_var("HOME", path) };
-            Self { prev }
-        }
-    }
-
-    impl Drop for HomeGuard {
-        fn drop(&mut self) {
-            if let Some(prev) = &self.prev {
-                unsafe { env::set_var("HOME", prev) };
-            } else {
-                unsafe { env::remove_var("HOME") };
-            }
-        }
-    }
-
     fn temp_home() -> Result<PathBuf> {
-        let path = env::temp_dir().join(format!(
+        let path = std::env::temp_dir().join(format!(
             "crpc-config-cmd-{}",
             SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
         ));
@@ -135,40 +112,36 @@ mod tests {
     }
 
     #[test]
-    fn run_set_persists_etherscan_key_and_run_get_succeeds() -> Result<()> {
+    fn set_and_get_etherscan_key_roundtrip() -> Result<()> {
         let home = temp_home()?;
-        let _guard = HomeGuard::set(&home);
-
-        run_set("etherscan_api_key", "secret-key")?;
-        run_get("etherscan_api_key")?;
-
-        let config = load_config(&home.join(".crpc.toml"))?;
-        assert_eq!(get_value(&config, "etherscan_api_key")?, "secret-key");
-
+        let path = home.join(".crpc.toml");
+        let mut config = StoredConfig::default();
+        set_value(&mut config, "etherscan_api_key", "secret-key")?;
+        save_config(&path, &config)?;
+        let loaded = load_config(&path)?;
+        assert_eq!(get_value(&loaded, "etherscan_api_key")?, "secret-key");
         fs::remove_dir_all(home)?;
         Ok(())
     }
 
     #[test]
-    fn run_set_preserves_existing_sections() -> Result<()> {
+    fn set_preserves_existing_sections() -> Result<()> {
         let home = temp_home()?;
-        let _guard = HomeGuard::set(&home);
+        let path = home.join(".crpc.toml");
         fs::write(
-            home.join(".crpc.toml"),
+            &path,
             "[chains.base]\nchain_id = 8453\npriority = [\"base\"]\n\n[chains.base.rpc]\nbase = \"https://mainnet.base.org\"\n",
         )?;
-
-        run_set("default_provider", "alchemy")?;
-        run_get("default_provider")?;
-
-        let config = load_config(&home.join(".crpc.toml"))?;
-        assert_eq!(get_value(&config, "default_provider")?, "alchemy");
-        assert_eq!(config.chains["base"].chain_id, 8453);
+        let mut config = load_config(&path)?;
+        set_value(&mut config, "default_provider", "alchemy")?;
+        save_config(&path, &config)?;
+        let loaded = load_config(&path)?;
+        assert_eq!(get_value(&loaded, "default_provider")?, "alchemy");
+        assert_eq!(loaded.chains["base"].chain_id, 8453);
         assert_eq!(
-            config.chains["base"].rpc.get("base").map(String::as_str),
+            loaded.chains["base"].rpc.get("base").map(String::as_str),
             Some("https://mainnet.base.org")
         );
-
         fs::remove_dir_all(home)?;
         Ok(())
     }

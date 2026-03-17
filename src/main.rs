@@ -177,6 +177,13 @@ pub enum Commands {
         /// Contract address
         address: String,
     },
+    /// Batch verify contract addresses (code exists on-chain)
+    Verify {
+        /// Chain alias or chain ID
+        chain: String,
+        /// Contract addresses to verify
+        addresses: Vec<String>,
+    },
     /// ERC20 allowance check
     Allowance {
         /// Chain alias or chain ID
@@ -297,6 +304,9 @@ async fn main() -> eyre::Result<()> {
         }
         Commands::Code { chain, address } => {
             commands::code::run(&chain, &address, rpc, provider, cli.json).await
+        }
+        Commands::Verify { chain, addresses } => {
+            commands::verify::run(&chain, &addresses, cli.json, rpc, provider).await
         }
         Commands::Allowance { chain, token, owner, spender, block } => {
             commands::allowance::run(&chain, &token, &owner, &spender, block.as_deref(), rpc, provider, cli.json).await

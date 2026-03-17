@@ -118,6 +118,24 @@ mod tests {
     }
 
     #[test]
+    fn parse_event_signature_handles_edge_cases() {
+        let no_params = parse_event_signature("Paused()").unwrap();
+        assert_eq!(no_params.signature, "Paused()");
+        assert!(no_params.params.is_empty());
+
+        let single_param = parse_event_signature("OwnerChanged(address owner)").unwrap();
+        assert_eq!(single_param.signature, "OwnerChanged(address)");
+        assert_eq!(single_param.params.len(), 1);
+
+        let indexed = parse_event_signature(
+            "PairCreated(address indexed token0, address indexed token1, address pair)",
+        )
+        .unwrap();
+        assert_eq!(indexed.signature, "PairCreated(address,address,address)");
+        assert_eq!(indexed.params.len(), 3);
+    }
+
+    #[test]
     fn extracts_pair_created_addresses() {
         let token0: Address = "0x0000000000000000000000000000000000000001".parse().unwrap();
         let token1: Address = "0x0000000000000000000000000000000000000002".parse().unwrap();
@@ -134,9 +152,62 @@ mod tests {
         assert_eq!(row.block, Some(42));
     }
 
+    #[test]
+    fn extract_pool_supports_events_with_three_and_four_address_params() {
+        let token0: Address = "0x0000000000000000000000000000000000000001".parse().unwrap();
+        let token1: Address = "0x0000000000000000000000000000000000000002".parse().unwrap();
+        let fee_recipient: Address = "0x0000000000000000000000000000000000000003".parse().unwrap();
+        let pool: Address = "0x0000000000000000000000000000000000000004".parse().unwrap();
+
+        let event_three =
+            parse_event_signature("PoolCreated(address indexed token0, address indexed token1, address pool)")
+                .unwrap();
+        let topics_three = vec![topic0(&event_three), topic(token0), topic(token1)];
+        let data_three = encode_addresses(&[pool]);
+        let row_three = extract_pool(&topics_three, &data_three, Some(7), &event_three).unwrap();
+        assert_eq!(row_three.token0, token0);
+        assert_eq!(row_three.token1, token1);
+        assert_eq!(row_three.pool, pool);
+
+        let event_four = parse_event_signature(
+            "PoolCreated(address indexed token0, address indexed token1, address feeRecipient, address pool)",
+        )
+        .unwrap();
+        let topics_four = vec![topic0(&event_four), topic(token0), topic(token1)];
+        let data_four = encode_addresses(&[fee_recipient, pool]);
+        let row_four = extract_pool(&topics_four, &data_four, Some(8), &event_four).unwrap();
+        assert_eq!(row_four.token0, token0);
+        assert_eq!(row_four.token1, token1);
+        assert_eq!(row_four.pool, pool);
+    }
+
+    #[test]
+    fn extract_pool_reports_malformed_event_data() {
+        let event = parse_event_signature(DEFAULT_EVENT).unwrap();
+        let topics = vec![
+            topic0(&event),
+            topic("0x0000000000000000000000000000000000000001".parse().unwrap()),
+            topic("0x0000000000000000000000000000000000000002".parse().unwrap()),
+        ];
+        let err = match extract_pool(&topics, &[0u8; 16], None, &event) {
+            Ok(_) => panic!("expected malformed event data to fail"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("buffer overrun"));
+    }
+
     fn topic(address: Address) -> B256 {
         let mut word = [0u8; 32];
         word[12..32].copy_from_slice(address.as_slice());
         B256::from(word)
+    }
+
+    fn encode_addresses(addresses: &[Address]) -> Vec<u8> {
+        let mut encoded = Vec::with_capacity(addresses.len() * 32);
+        for address in addresses {
+            encoded.extend_from_slice(&[0u8; 12]);
+            encoded.extend_from_slice(address.as_slice());
+        }
+        encoded
     }
 }

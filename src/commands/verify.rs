@@ -59,17 +59,47 @@ fn format_size(size: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_size, run};
+    use super::{format_size, run, VerifyResult};
+    use serde_json::Value;
 
     #[test]
-    fn format_size_uses_bytes_and_kb() {
-        assert_eq!(format_size(512), "512 B");
+    fn format_size_handles_edge_cases() {
+        assert_eq!(format_size(0), "0 B");
+        assert_eq!(format_size(1024), "1.0 KB");
         assert_eq!(format_size(4200), "4.1 KB");
     }
 
     #[tokio::test]
-    async fn run_skips_invalid_addresses() {
-        let addresses = vec!["invalid".to_string()];
+    async fn run_skips_multiple_invalid_addresses_without_error() {
+        let addresses = vec![
+            "invalid".to_string(),
+            "0x1234".to_string(),
+            "not-an-address".to_string(),
+        ];
         assert!(run("eth", &addresses, false, Some("http://127.0.0.1:9"), None).await.is_ok());
+    }
+
+    #[test]
+    fn json_output_shape_is_valid() {
+        let rows = vec![VerifyResult {
+            address: "0x0000000000000000000000000000000000000001",
+            is_contract: true,
+            code_size: 1024,
+        }];
+        let output = serde_json::to_string(&rows).unwrap();
+        let parsed: Value = serde_json::from_str(&output).unwrap();
+        let first = &parsed.as_array().unwrap()[0];
+        assert_eq!(
+            first.get("address").and_then(Value::as_str),
+            Some("0x0000000000000000000000000000000000000001")
+        );
+        assert_eq!(
+            first.get("is_contract").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            first.get("code_size").and_then(Value::as_u64),
+            Some(1024)
+        );
     }
 }

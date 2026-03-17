@@ -35,6 +35,24 @@ pub fn resolve_token(
     None
 }
 
+/// Resolve a token address to a known symbol on a given chain.
+pub fn lookup_symbol(
+    chain: &str,
+    address: Address,
+    config_tokens: Option<&HashMap<String, HashMap<String, String>>>,
+) -> Option<String> {
+    if let Some(entry) = find_builtin_chain(chain) {
+        if let Some((symbol, _)) = entry.tokens.iter().find(|(_, value)| parse_address(value) == Some(address)) {
+            return Some((*symbol).to_string());
+        }
+    }
+    let chain_map = match_config_tokens(chain, config_tokens?)?;
+    chain_map
+        .iter()
+        .find(|(_, value)| parse_address(value) == Some(address))
+        .map(|(symbol, _)| symbol.clone())
+}
+
 struct TokenChain {
     key: &'static str,
     aliases: &'static [&'static str],
@@ -137,5 +155,25 @@ mod tests {
         config.insert("base".to_string(), tokens);
         let addr = resolve_token("base-mainnet", "special", Some(&config)).unwrap();
         assert_eq!(addr, "0x1111111111111111111111111111111111111111".parse::<Address>().unwrap());
+    }
+
+    #[test]
+    fn looks_up_symbol_by_address() {
+        let built_in = lookup_symbol(
+            "ethereum",
+            "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".parse().unwrap(),
+            None,
+        );
+        assert_eq!(built_in.as_deref(), Some("USDC"));
+        let mut config = HashMap::new();
+        let mut tokens = HashMap::new();
+        tokens.insert("special".to_string(), "0x1111111111111111111111111111111111111111".to_string());
+        config.insert("base".to_string(), tokens);
+        let custom = lookup_symbol(
+            "base-mainnet",
+            "0x1111111111111111111111111111111111111111".parse().unwrap(),
+            Some(&config),
+        );
+        assert_eq!(custom.as_deref(), Some("special"));
     }
 }

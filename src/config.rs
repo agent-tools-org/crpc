@@ -2,7 +2,7 @@
 // Loads ~/.crpc.toml, resolves chain aliases to RPC URLs
 
 use eyre::{ContextCompat, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
@@ -22,11 +22,19 @@ pub struct ChainConfig {
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
+    pub keys: Option<Keys>,
+    #[serde(default)]
     pub default_provider: Option<String>,
     #[serde(default)]
     pub chains: HashMap<String, ChainConfig>,
     #[serde(default)]
     pub tokens: HashMap<String, HashMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default, Serialize)]
+pub struct Keys {
+    #[serde(default)]
+    pub etherscan: Option<String>,
 }
 
 /// RPC resolution overrides
@@ -40,6 +48,7 @@ impl Config {
     /// Load config from ~/.crpc.toml, merging with built-in defaults
     pub fn load() -> Result<Self> {
         let mut config = Config {
+            keys: None,
             default_provider: None,
             chains: built_in_chains(),
             tokens: HashMap::new(),
@@ -48,6 +57,7 @@ impl Config {
             if path.exists() {
                 let raw = fs::read_to_string(&path)?;
                 let mut file_config: Config = basic_toml::from_str(&raw)?;
+                config.keys = file_config.keys.take();
                 let file_default = file_config.default_provider.take();
                 config.chains.extend(file_config.chains);
                 config.tokens = file_config.tokens;
@@ -265,7 +275,7 @@ fn built_in_chains() -> HashMap<String, ChainConfig> {
         .collect()
 }
 
-fn config_file_path() -> Option<PathBuf> {
+pub fn config_file_path() -> Option<PathBuf> {
     env::var("HOME")
         .ok()
         .map(|home| PathBuf::from(home).join(".crpc.toml"))
@@ -449,6 +459,7 @@ mod tests {
         let mut chains = HashMap::new();
         chains.insert(key.to_string(), chain);
         Config {
+            keys: None,
             default_provider: default_provider.map(String::from),
             chains,
             tokens: HashMap::new(),

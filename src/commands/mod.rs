@@ -8,6 +8,7 @@ pub mod block;
 pub mod call;
 pub mod chains;
 pub mod code;
+pub mod config_cmd;
 pub mod decode;
 pub mod diff;
 pub mod encode;

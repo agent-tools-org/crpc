@@ -128,6 +128,25 @@ pub enum Commands {
         #[arg(long, default_value = "50")]
         limit: usize,
     },
+    /// Discover pools from factory contract events
+    Pools {
+        /// Chain alias or chain ID
+        chain: String,
+        /// Factory contract address
+        factory: String,
+        /// Event signature (default: PairCreated for Uniswap V2)
+        #[arg(long)]
+        event: Option<String>,
+        /// Starting block number
+        #[arg(long)]
+        from: Option<String>,
+        /// Ending block number
+        #[arg(long)]
+        to: Option<String>,
+        /// Max pools to display
+        #[arg(long, default_value = "50")]
+        limit: usize,
+    },
     /// Debug trace a transaction (requires archive node)
     Trace {
         /// Chain alias or chain ID
@@ -276,6 +295,9 @@ async fn main() -> eyre::Result<()> {
         }
         Commands::Logs { chain, address, event, topic0, from, to, blocks, limit } => {
             commands::logs::run(&chain, &address, event.as_deref(), topic0.as_deref(), from.as_deref(), to.as_deref(), blocks, limit, rpc, provider, cli.json).await
+        }
+        Commands::Pools { chain, factory, event, from, to, limit } => {
+            commands::pools::run(&chain, &factory, event.as_deref(), from.as_deref(), to.as_deref(), limit, cli.json, rpc, provider).await
         }
         Commands::Trace { chain, hash, depth } => {
             commands::trace::run(&chain, &hash, depth, rpc, provider).await

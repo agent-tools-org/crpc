@@ -1,6 +1,6 @@
 // Chainlist RPC catalog loader and query helpers.
 // Exports ChainEntry/RpcEntry descriptors plus loader/search utilities for chainlist.org.
-// Depends on serde, reqwest blocking, eyre, and std fs/time/env helpers.
+// Depends on serde, reqwest, eyre, and std fs/time/env helpers.
 
 #![allow(dead_code)]
 
@@ -23,7 +23,7 @@ pub fn load_cached() -> Result<Vec<ChainEntry>> {
 }
 
 /// Load chainlist data (from cache or network). Uses cached file if < 24h old.
-pub fn load() -> Result<Vec<ChainEntry>> {
+pub async fn load() -> Result<Vec<ChainEntry>> {
     let cache_path = cache_file_path()?;
     let now = SystemTime::now();
     let mut stale_entries = None;
@@ -35,7 +35,7 @@ pub fn load() -> Result<Vec<ChainEntry>> {
             stale_entries = Some(entries);
         }
     }
-    match fetch_chainlist() {
+    match fetch_chainlist().await {
         Ok((entries, body)) => {
             if let Some(parent) = cache_path.parent() {
                 let _ = fs::create_dir_all(parent);
@@ -171,13 +171,15 @@ fn read_cached_entries(path: &Path) -> Result<Vec<ChainEntry>> {
     parse_chainlist(&data)
 }
 
-fn fetch_chainlist() -> Result<(Vec<ChainEntry>, String)> {
-    let response = reqwest::blocking::get(CHAINLIST_URL)
+async fn fetch_chainlist() -> Result<(Vec<ChainEntry>, String)> {
+    let response = reqwest::get(CHAINLIST_URL)
+        .await
         .context("fetching chainlist rpc directory")?
         .error_for_status()
         .context("chainlist returned error status")?;
     let body = response
         .text()
+        .await
         .context("reading chainlist response body")?;
     let entries = parse_chainlist(body.as_bytes())?;
     Ok((entries, body))

@@ -390,24 +390,36 @@ fn config_path() -> Result<PathBuf> {
 }
 
 fn test_rpc(url: &str) -> Result<u64> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()?;
-    let resp: serde_json::Value = client
-        .post(url)
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "eth_chainId",
-            "params": [],
-            "id": 1
-        }))
-        .send()?
-        .json()?;
-    let hex = resp["result"]
-        .as_str()
-        .ok_or_else(|| eyre::eyre!("no result in response"))?;
-    let id = u64::from_str_radix(hex.trim_start_matches("0x"), 16)?;
-    Ok(id)
+    let handle = tokio::runtime::Handle::current();
+    let url = url.to_string();
+    std::thread::scope(|s| {
+        s.spawn(move || {
+            handle.block_on(async {
+                let client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(5))
+                    .build()?;
+                let resp: serde_json::Value = client
+                    .post(&url)
+                    .json(&serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "eth_chainId",
+                        "params": [],
+                        "id": 1
+                    }))
+                    .send()
+                    .await?
+                    .json()
+                    .await?;
+                let hex = resp["result"]
+                    .as_str()
+                    .ok_or_else(|| eyre::eyre!("no result in response"))?;
+                let id = u64::from_str_radix(hex.trim_start_matches("0x"), 16)?;
+                Ok(id)
+            })
+        })
+        .join()
+        .expect("test_rpc thread panicked")
+    })
 }
 
 fn print_done(path: &std::path::Path) {

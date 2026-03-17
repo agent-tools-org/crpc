@@ -302,7 +302,7 @@ async fn main() -> eyre::Result<()> {
             commands::transfers::run(&chain, &address, token.as_deref(), from.as_deref(), to.as_deref(), limit, cli.json).await
         }
         Commands::Chains { query } => {
-            commands::chains::run(query.as_deref())
+            commands::chains::run(query.as_deref()).await
         }
         Commands::Encode { sig, args } => commands::encode::run(&sig, &args).await,
         Commands::Decode { sig, data } => commands::decode::run(&sig, &data).await,

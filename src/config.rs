@@ -47,7 +47,7 @@ impl Config {
         if let Some(path) = config_file_path() {
             if path.exists() {
                 let raw = fs::read_to_string(&path)?;
-                let mut file_config: Config = toml::from_str(&raw)?;
+                let mut file_config: Config = basic_toml::from_str(&raw)?;
                 let file_default = file_config.default_provider.take();
                 config.chains.extend(file_config.chains);
                 config.tokens = file_config.tokens;

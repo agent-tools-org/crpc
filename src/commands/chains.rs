@@ -3,8 +3,8 @@
 
 use eyre::Result;
 
-pub fn run(query: Option<&str>) -> Result<()> {
-    let entries = crate::chainlist::load()?;
+pub async fn run(query: Option<&str>) -> Result<()> {
+    let entries = crate::chainlist::load().await?;
     let results: Vec<&crate::chainlist::ChainEntry> = match query {
         Some(q) => crate::chainlist::search(&entries, q),
         None => {

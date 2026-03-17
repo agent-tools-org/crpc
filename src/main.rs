@@ -76,6 +76,9 @@ pub enum Commands {
         chain: String,
         /// Contract address
         contract: String,
+        /// Output raw JSON ABI
+        #[arg(long)]
+        raw: bool,
     },
     /// Read contract storage slot
     Slot {
@@ -262,8 +265,8 @@ async fn main() -> eyre::Result<()> {
         Commands::Balance { chain, token, holder, raw, block } => {
             commands::balance::run(&chain, &token, &holder, raw, block.as_deref(), rpc, provider, cli.json).await
         }
-        Commands::Abi { chain, contract } => {
-            commands::abi::run(&chain, &contract).await
+        Commands::Abi { chain, contract, raw } => {
+            commands::abi::run(&chain, &contract, raw, cli.json).await
         }
         Commands::Slot { chain, contract, slot, block } => {
             commands::storage::run(&chain, &contract, &slot, block.as_deref(), rpc, provider, cli.json).await

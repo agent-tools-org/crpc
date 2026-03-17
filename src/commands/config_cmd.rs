@@ -100,76 +100,78 @@ fn get_value(config: &StoredConfig, key: &str) -> Result<String> {
 mod tests {
     use super::*;
     use eyre::Result;
-    use std::env;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    struct HomeGuard {
-        prev: Option<String>,
-    }
-
-    impl HomeGuard {
-        fn set(path: &Path) -> Self {
-            let prev = env::var("HOME").ok();
-            unsafe { env::set_var("HOME", path) };
-            Self { prev }
-        }
-    }
-
-    impl Drop for HomeGuard {
-        fn drop(&mut self) {
-            if let Some(prev) = &self.prev {
-                unsafe { env::set_var("HOME", prev) };
-            } else {
-                unsafe { env::remove_var("HOME") };
-            }
-        }
-    }
-
-    fn temp_home() -> Result<PathBuf> {
-        let path = env::temp_dir().join(format!(
+    fn temp_config_path() -> Result<PathBuf> {
+        let dir = std::env::temp_dir().join(format!(
             "crpc-config-cmd-{}",
             SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
         ));
-        fs::create_dir_all(&path)?;
-        Ok(path)
+        fs::create_dir_all(&dir)?;
+        Ok(dir.join(".crpc.toml"))
     }
 
     #[test]
-    fn run_set_persists_etherscan_key_and_run_get_succeeds() -> Result<()> {
-        let home = temp_home()?;
-        let _guard = HomeGuard::set(&home);
+    fn set_value_rejects_unknown_keys() {
+        let mut config = StoredConfig::default();
+        let err = set_value(&mut config, "unknown_key", "value").unwrap_err();
+        assert_eq!(err.to_string(), "unsupported config key: unknown_key");
+    }
 
-        run_set("etherscan_api_key", "secret-key")?;
-        run_get("etherscan_api_key")?;
+    #[test]
+    fn empty_config_file_round_trips() -> Result<()> {
+        let path = temp_config_path()?;
+        fs::write(&path, "")?;
 
-        let config = load_config(&home.join(".crpc.toml"))?;
-        assert_eq!(get_value(&config, "etherscan_api_key")?, "secret-key");
+        let config = load_config(&path)?;
+        assert!(config.default_provider.is_none());
+        assert!(config.keys.is_none());
+        assert!(config.chains.is_empty());
+        assert!(config.tokens.is_empty());
 
-        fs::remove_dir_all(home)?;
+        save_config(&path, &config)?;
+        let reloaded = load_config(&path)?;
+        assert!(reloaded.default_provider.is_none());
+        assert!(reloaded.keys.is_none());
+        assert!(reloaded.chains.is_empty());
+        assert!(reloaded.tokens.is_empty());
+
+        fs::remove_dir_all(path.parent().unwrap())?;
         Ok(())
     }
 
     #[test]
-    fn run_set_preserves_existing_sections() -> Result<()> {
-        let home = temp_home()?;
-        let _guard = HomeGuard::set(&home);
-        fs::write(
-            home.join(".crpc.toml"),
-            "[chains.base]\nchain_id = 8453\npriority = [\"base\"]\n\n[chains.base.rpc]\nbase = \"https://mainnet.base.org\"\n",
-        )?;
+    fn multiple_set_operations_do_not_clobber_existing_values() -> Result<()> {
+        let path = temp_config_path()?;
+        let mut config = StoredConfig::default();
+        config.chains.insert(
+            "base".to_string(),
+            StoredChainConfig {
+                chain_id: 8453,
+                priority: Some(vec!["base".to_string()]),
+                rpc: HashMap::from([(
+                    "base".to_string(),
+                    "https://mainnet.base.org".to_string(),
+                )]),
+            },
+        );
+        set_value(&mut config, "default_provider", "alchemy")?;
+        save_config(&path, &config)?;
 
-        run_set("default_provider", "alchemy")?;
-        run_get("default_provider")?;
+        let mut updated = load_config(&path)?;
+        set_value(&mut updated, "etherscan_api_key", "secret-key")?;
+        save_config(&path, &updated)?;
 
-        let config = load_config(&home.join(".crpc.toml"))?;
-        assert_eq!(get_value(&config, "default_provider")?, "alchemy");
-        assert_eq!(config.chains["base"].chain_id, 8453);
+        let reloaded = load_config(&path)?;
+        assert_eq!(get_value(&reloaded, "default_provider")?, "alchemy");
+        assert_eq!(get_value(&reloaded, "etherscan_api_key")?, "secret-key");
+        assert_eq!(reloaded.chains["base"].chain_id, 8453);
         assert_eq!(
-            config.chains["base"].rpc.get("base").map(String::as_str),
+            reloaded.chains["base"].rpc.get("base").map(String::as_str),
             Some("https://mainnet.base.org")
         );
 
-        fs::remove_dir_all(home)?;
+        fs::remove_dir_all(path.parent().unwrap())?;
         Ok(())
     }
 }

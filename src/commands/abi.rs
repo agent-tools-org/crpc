@@ -49,6 +49,7 @@ fn join_event_types(field: Option<&Value>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
     #[test]
     fn join_types_formats_correctly() {
@@ -66,12 +67,48 @@ mod tests {
     }
 
     #[test]
-    fn render_supports_json_and_events() {
+    fn render_supports_human_readable_functions_and_events() {
         let entries = serde_json::json!([
             {"type": "function", "name": "transfer", "inputs": [{"type": "address"}, {"type": "uint256"}], "outputs": [{"type": "bool"}]},
             {"type": "event", "name": "Transfer", "inputs": [{"type": "address", "indexed": true}, {"type": "address", "indexed": true}, {"type": "uint256"}]},
         ]);
         assert_eq!(render(entries.as_array().unwrap(), false, false).unwrap(), "transfer(address,uint256) -> (bool)\nevent Transfer(address indexed,address indexed,uint256)");
-        assert_eq!(render(entries.as_array().unwrap(), true, false).unwrap(), serde_json::to_string_pretty(&entries).unwrap());
+    }
+
+    #[test]
+    fn render_raw_and_json_modes_return_valid_json_arrays() {
+        let entries = serde_json::json!([
+            {"type": "function", "name": "approve", "inputs": [{"type": "address"}, {"type": "uint256"}], "outputs": [{"type": "bool"}]},
+            {"type": "event", "name": "Approval", "inputs": [{"type": "address", "indexed": true}, {"type": "address", "indexed": true}, {"type": "uint256"}]},
+        ]);
+        for output in [
+            render(entries.as_array().unwrap(), true, false).unwrap(),
+            render(entries.as_array().unwrap(), false, true).unwrap(),
+        ] {
+            let parsed: Value = serde_json::from_str(&output).unwrap();
+            assert!(parsed.is_array());
+            assert_eq!(parsed, entries);
+        }
+    }
+
+    #[test]
+    fn render_handles_empty_function_only_and_event_only_entries() {
+        assert_eq!(render(&[], false, false).unwrap(), "");
+
+        let function_only = serde_json::json!([
+            {"type": "function", "name": "totalSupply", "inputs": [], "outputs": [{"type": "uint256"}]},
+        ]);
+        assert_eq!(
+            render(function_only.as_array().unwrap(), false, false).unwrap(),
+            "totalSupply() -> (uint256)"
+        );
+
+        let event_only = serde_json::json!([
+            {"type": "event", "name": "Paused", "inputs": []},
+        ]);
+        assert_eq!(
+            render(event_only.as_array().unwrap(), false, false).unwrap(),
+            "event Paused()"
+        );
     }
 }

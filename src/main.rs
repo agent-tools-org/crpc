@@ -205,6 +205,16 @@ pub enum Commands {
         /// Contract address
         address: String,
     },
+    /// Extract function selectors from contract bytecode
+    Selectors {
+        /// Chain alias or chain ID
+        chain: String,
+        /// Contract address
+        contract: String,
+        /// Skip online lookup (only show raw selectors)
+        #[arg(long)]
+        offline: bool,
+    },
     /// Batch verify contract addresses (code exists on-chain)
     Verify {
         /// Chain alias or chain ID
@@ -351,6 +361,9 @@ async fn main() -> eyre::Result<()> {
         }
         Commands::Code { chain, address } => {
             commands::code::run(&chain, &address, rpc, provider, cli.json).await
+        }
+        Commands::Selectors { chain, contract, offline } => {
+            commands::selectors::run(&chain, &contract, offline, rpc, provider, cli.json).await
         }
         Commands::Verify { chain, addresses } => {
             commands::verify::run(&chain, &addresses, cli.json, rpc, provider).await

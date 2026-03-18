@@ -176,6 +176,29 @@ pub enum Commands {
         /// JSON file with call specs
         file: String,
     },
+    /// Simulate a transaction via eth_call
+    Simulate {
+        /// Chain alias or chain ID
+        chain: String,
+        /// Target contract address
+        #[arg(long)]
+        to: String,
+        /// Calldata (hex, 0x-prefixed)
+        #[arg(long)]
+        data: String,
+        /// Sender address for simulation
+        #[arg(long)]
+        from: Option<String>,
+        /// Value in wei
+        #[arg(long)]
+        value: Option<String>,
+        /// Block number (default: latest)
+        #[arg(long)]
+        block: Option<String>,
+        /// Function signature for decoding result, e.g. "swap(...)(uint256[])"
+        #[arg(long)]
+        sig: Option<String>,
+    },
     /// Compare local cache vs on-chain value
     Diff {
         /// Chain alias or chain ID
@@ -350,6 +373,9 @@ async fn main() -> eyre::Result<()> {
         Commands::Multi { chain, file } => {
             commands::batch::run(&chain, &file, rpc, provider, cli.json).await
         }
+        Commands::Simulate { chain, to, data, from, value, block, sig } => {
+            commands::simulate::run(&chain, &to, &data, from.as_deref(), value.as_deref(), block.as_deref(), sig.as_deref(), rpc, provider, cli.json).await
+        }
         Commands::Diff { chain, contract, sig, args, from, to } => {
             commands::diff::run(&chain, &contract, &sig, &args, &from, &to, rpc, provider, cli.json).await
         }
@@ -390,5 +416,19 @@ async fn main() -> eyre::Result<()> {
                 commands::init::run()
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Cli;
+    use clap::{error::ErrorKind, Parser};
+
+    #[test]
+    fn simulate_requires_to_flag() {
+        let err = Cli::try_parse_from(["crpc", "simulate", "arb", "--data", "0x"])
+            .err()
+            .expect("simulate should require --to");
+        assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
     }
 }

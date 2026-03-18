@@ -80,6 +80,15 @@ pub enum Commands {
         #[arg(long)]
         raw: bool,
     },
+    /// Check if a function selector exists in a contract
+    AbiCheck {
+        /// Chain alias or chain ID
+        chain: String,
+        /// Contract address
+        contract: String,
+        /// Function signature to check
+        sig: String,
+    },
     /// Read contract storage slot
     Slot {
         /// Chain alias or chain ID
@@ -306,6 +315,9 @@ async fn main() -> eyre::Result<()> {
         }
         Commands::Abi { chain, contract, raw } => {
             commands::abi::run(&chain, &contract, raw, cli.json).await
+        }
+        Commands::AbiCheck { chain, contract, sig } => {
+            commands::abi_check::run(&chain, &contract, &sig, rpc, provider, cli.json).await
         }
         Commands::Slot { chain, contract, slot, block } => {
             commands::storage::run(&chain, &contract, &slot, block.as_deref(), rpc, provider, cli.json).await

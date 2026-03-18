@@ -6,6 +6,7 @@ use alloy::dyn_abi::{DynSolCall, DynSolReturns, DynSolType, DynSolValue};
 use alloy::primitives::{Bytes, keccak256, Selector};
 use eyre::{eyre, Result};
 use hex;
+use std::collections::HashSet;
 
 /// Encode a function call from its signature and string arguments.
 /// e.g. encode_call("getTick(int32)", &["-30"]) -> calldata bytes
@@ -46,6 +47,32 @@ pub fn decode_response(sig: &str, data: &[u8]) -> Result<Vec<DecodedValue>> {
     } else {
         decode_raw_words(data)
     }
+}
+
+pub fn compute_selector(sig: &str) -> Result<[u8; 4]> {
+    let SignatureParts { name, params, .. } = parse_signature(sig)?;
+    let param_types = parse_types(&params)?;
+    let selector = build_selector(&name, &param_types);
+    Ok(selector.into())
+}
+
+pub fn extract_selectors_from_bytecode(bytecode: &[u8]) -> Vec<[u8; 4]> {
+    let mut selectors = Vec::new();
+    let mut seen = HashSet::new();
+    let mut i = 0;
+    while i < bytecode.len() {
+        if bytecode[i] == 0x63 && i + 4 < bytecode.len() {
+            let mut selector = [0u8; 4];
+            selector.copy_from_slice(&bytecode[i + 1..i + 5]);
+            if seen.insert(selector) {
+                selectors.push(selector);
+            }
+            i += 5;
+        } else {
+            i += 1;
+        }
+    }
+    selectors
 }
 
 /// A decoded ABI value with type information
@@ -399,6 +426,27 @@ mod tests {
     #[test]
     fn decode_revert_empty_payload() {
         assert_eq!(decode_revert(&[]), "reverted without reason");
+    }
+
+    #[test]
+    fn compute_selector_matches_transfer() {
+        assert_eq!(
+            hex::encode(compute_selector("transfer(address,uint256)").unwrap()),
+            "a9059cbb"
+        );
+    }
+
+    #[test]
+    fn extract_selectors_from_bytecode_deduplicates_push4_values() {
+        let bytecode = vec![
+            0x60, 0x00, 0x63, 0xa9, 0x05, 0x9c, 0xbb, 0x14, 0x63, 0x09, 0x5e, 0xa7, 0xb3,
+            0x57, 0x63, 0xa9, 0x05, 0x9c, 0xbb, 0x00, 0x63, 0x12, 0x34,
+        ];
+        let selectors = extract_selectors_from_bytecode(&bytecode);
+        assert_eq!(
+            selectors,
+            vec![[0xa9, 0x05, 0x9c, 0xbb], [0x09, 0x5e, 0xa7, 0xb3]]
+        );
     }
 
     fn build_error_revert(message: &str) -> Vec<u8> {

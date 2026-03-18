@@ -1,6 +1,7 @@
 // Command implementations — each subcommand in its own module
 
 pub mod abi;
+pub mod abi_check;
 pub mod allowance;
 pub mod balance;
 pub mod batch;

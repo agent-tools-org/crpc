@@ -48,6 +48,25 @@ pub fn decode_response(sig: &str, data: &[u8]) -> Result<Vec<DecodedValue>> {
     }
 }
 
+pub fn extract_selectors_from_bytecode(bytecode: &[u8]) -> Vec<[u8; 4]> {
+    let mut selectors = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut i = 0;
+    while i < bytecode.len() {
+        if bytecode[i] == 0x63 && i + 4 < bytecode.len() {
+            let mut selector = [0u8; 4];
+            selector.copy_from_slice(&bytecode[i + 1..i + 5]);
+            if seen.insert(selector) {
+                selectors.push(selector);
+            }
+            i += 5;
+        } else {
+            i += 1;
+        }
+    }
+    selectors
+}
+
 /// A decoded ABI value with type information
 #[derive(Debug, Clone)]
 pub struct DecodedValue {
@@ -399,6 +418,22 @@ mod tests {
     #[test]
     fn decode_revert_empty_payload() {
         assert_eq!(decode_revert(&[]), "reverted without reason");
+    }
+
+    #[test]
+    fn extract_selectors_from_bytecode_deduplicates_push4_values() {
+        let bytecode = vec![
+            0x60, 0x00,
+            0x63, 0xde, 0xad, 0xbe, 0xef,
+            0x61, 0x12, 0x34,
+            0x63, 0xde, 0xad, 0xbe, 0xef,
+            0x63, 0xca, 0xfe, 0xba, 0xbe,
+            0x63, 0xaa, 0xbb,
+        ];
+        assert_eq!(
+            extract_selectors_from_bytecode(&bytecode),
+            vec![[0xde, 0xad, 0xbe, 0xef], [0xca, 0xfe, 0xba, 0xbe]]
+        );
     }
 
     fn build_error_revert(message: &str) -> Vec<u8> {

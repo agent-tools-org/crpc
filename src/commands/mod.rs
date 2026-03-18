@@ -17,6 +17,7 @@ pub mod history;
 pub mod init;
 pub mod logs;
 pub mod pools;
+pub mod selectors;
 pub mod storage;
 pub mod trace;
 pub mod transfers;

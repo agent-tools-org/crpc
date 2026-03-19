@@ -392,7 +392,7 @@ async fn main() -> eyre::Result<()> {
             commands::pools::run(&chain, &factory, event.as_deref(), from.as_deref(), to.as_deref(), limit, cli.json, rpc, provider).await
         }
         Commands::Trace { chain, hash, depth } => {
-            commands::trace::run(&chain, &hash, depth, rpc, provider).await
+            commands::trace::run(&chain, &hash, depth, rpc, provider, cli.json).await
         }
         Commands::Multi { chain, file } => {
             commands::batch::run(&chain, &file, rpc, provider, cli.json).await

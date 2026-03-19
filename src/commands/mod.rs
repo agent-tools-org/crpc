@@ -4,6 +4,7 @@ pub mod abi;
 pub mod abi_check;
 pub mod allowance;
 pub mod balance;
+pub mod balance_slot;
 pub mod batch;
 pub mod block;
 pub mod call;

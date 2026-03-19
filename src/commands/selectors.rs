@@ -70,7 +70,7 @@ pub async fn run(
     Ok(())
 }
 
-async fn resolve_selector_names(
+pub(crate) async fn resolve_selector_names(
     chain: &str,
     contract: &str,
     selectors: &[[u8; 4]],

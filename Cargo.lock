@@ -1265,7 +1265,7 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
 name = "crpc"
-version = "0.9.4"
+version = "0.9.5"
 dependencies = [
  "alloy",
  "alloy-consensus",

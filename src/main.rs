@@ -70,6 +70,15 @@ pub enum Commands {
         #[arg(long)]
         block: Option<String>,
     },
+    /// Auto-detect ERC20 balanceOf mapping storage slot
+    BalanceSlot {
+        /// Chain alias or chain ID
+        chain: String,
+        /// Token address
+        token: String,
+        /// Holder address (must have non-zero balance)
+        holder: String,
+    },
     /// Fetch contract ABI from block explorer
     Abi {
         /// Chain alias or chain ID
@@ -98,6 +107,15 @@ pub enum Commands {
         /// Storage slot (hex or decimal)
         slot: String,
         /// Block number for historical query (default: latest)
+        #[arg(long)]
+        block: Option<String>,
+    },
+    /// Compute and read a Solidity mapping storage slot
+    MappingSlot {
+        chain: String,
+        contract: String,
+        slot: String,
+        key: String,
         #[arg(long)]
         block: Option<String>,
     },
@@ -346,6 +364,9 @@ async fn main() -> eyre::Result<()> {
         Commands::Balance { chain, token, holder, raw, block } => {
             commands::balance::run(&chain, &token, &holder, raw, block.as_deref(), rpc, provider, cli.json).await
         }
+        Commands::BalanceSlot { chain, token, holder } => {
+            commands::balance_slot::run(&chain, &token, &holder, rpc, provider, cli.json).await
+        }
         Commands::Abi { chain, contract, raw } => {
             commands::abi::run(&chain, &contract, raw, cli.json).await
         }
@@ -354,6 +375,9 @@ async fn main() -> eyre::Result<()> {
         }
         Commands::Slot { chain, contract, slot, block } => {
             commands::storage::run(&chain, &contract, &slot, block.as_deref(), rpc, provider, cli.json).await
+        }
+        Commands::MappingSlot { chain, contract, slot, key, block } => {
+            commands::mapping_slot::run(&chain, &contract, &slot, &key, block.as_deref(), rpc, provider, cli.json).await
         }
         Commands::Block { chain, number } => {
             commands::block::run(&chain, number.as_deref(), rpc, provider, cli.json).await

@@ -133,6 +133,13 @@ pub enum Commands {
         /// Transaction hash
         hash: String,
     },
+    /// Calculate actual transaction cost (gas + L1 data fee on L2s)
+    Cost {
+        /// Chain alias or chain ID
+        chain: String,
+        /// Transaction hash
+        hash: String,
+    },
     /// Query event logs
     Logs {
         /// Chain alias or chain ID
@@ -384,6 +391,9 @@ async fn main() -> eyre::Result<()> {
         }
         Commands::Tx { chain, hash } => {
             commands::tx::run(&chain, &hash, rpc, provider, cli.json).await
+        }
+        Commands::Cost { chain, hash } => {
+            commands::cost::run(&chain, &hash, rpc, provider, cli.json).await
         }
         Commands::Logs { chain, address, event, topic0, from, to, blocks, limit } => {
             commands::logs::run(&chain, &address, event.as_deref(), topic0.as_deref(), from.as_deref(), to.as_deref(), blocks, limit, rpc, provider, cli.json).await

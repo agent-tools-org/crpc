@@ -13,6 +13,7 @@ pub async fn run(
     raw: bool,
     human: bool,
     block: Option<&str>,
+    from: Option<&str>,
     rpc_override: Option<&str>,
     provider: Option<&str>,
     json: bool,
@@ -26,9 +27,13 @@ pub async fn run(
     let contract_addr = contract.parse::<Address>().map_err(|_| {
         eyre::eyre!("invalid address: expected 0x + 40 hex chars, got {:?}", contract)
     })?;
+    let from_addr = from
+        .map(|f| f.parse::<Address>())
+        .transpose()
+        .map_err(|_| eyre::eyre!("invalid --from address"))?;
     let calldata = crate::abi::encode_call(sig, args)?;
     let block_number = parse_block_number(block)?;
-    let response = match crate::rpc::eth_call_with_fallback(&rpc_urls, contract_addr, calldata, block_number).await {
+    let response = match crate::rpc::eth_call_with_fallback(&rpc_urls, contract_addr, calldata, block_number, from_addr).await {
         Ok(bytes) => bytes,
         Err(err) => {
             if let Some(revert) = err.downcast_ref::<crate::rpc::RevertError>() {
@@ -67,6 +72,7 @@ mod tests {
             &args,
             false,
             false,
+            None,
             None,
             None,
             None,

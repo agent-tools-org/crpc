@@ -54,9 +54,13 @@ pub async fn eth_call(
     to: Address,
     calldata: Bytes,
     block: Option<u64>,
+    from: Option<Address>,
 ) -> Result<Bytes> {
     let provider = make_provider(rpc_url)?;
-    let tx = TransactionRequest::default().to(to).input(TransactionInput::new(calldata));
+    let mut tx = TransactionRequest::default().to(to).input(TransactionInput::new(calldata));
+    if let Some(sender) = from {
+        tx = tx.from(sender);
+    }
     let block_id = block.map(BlockId::number).unwrap_or_else(BlockId::latest);
     match provider.call(tx).block(block_id).await {
         Ok(response) => Ok(response),
@@ -77,10 +81,11 @@ pub async fn eth_call_with_fallback(
     to: Address,
     calldata: Bytes,
     block: Option<u64>,
+    from: Option<Address>,
 ) -> Result<Bytes> {
     with_fallback(rpc_urls, move |rpc_url| {
         let calldata = calldata.clone();
-        async move { eth_call(&rpc_url, to, calldata, block).await }
+        async move { eth_call(&rpc_url, to, calldata, block, from).await }
     })
     .await
 }

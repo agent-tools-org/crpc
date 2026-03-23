@@ -24,7 +24,7 @@ pub async fn run(
     let holder_addr = holder.parse::<Address>()?;
     let calldata = crate::abi::encode_call("balanceOf(address)", &[holder_addr.to_string()])?;
     let block_number = parse_block_number(block)?;
-    let response = crate::rpc::eth_call_with_fallback(&rpc_urls, token_addr, calldata, block_number).await?;
+    let response = crate::rpc::eth_call_with_fallback(&rpc_urls, token_addr, calldata, block_number, None).await?;
     if raw && !json {
         println!("{}", crate::format::format_raw(&response));
         return Ok(());
@@ -81,7 +81,7 @@ fn resolve_token_address(chain: &str, token: &str, config: &crate::config::Confi
 }
 async fn try_read_decimals(rpc_urls: &[String], token: Address, block: Option<u64>) -> Option<u8> {
     let calldata = crate::abi::encode_call("decimals()", &[]).ok()?;
-    let response = crate::rpc::eth_call_with_fallback(rpc_urls, token, calldata, block)
+    let response = crate::rpc::eth_call_with_fallback(rpc_urls, token, calldata, block, None)
         .await
         .ok()?;
     let decoded = crate::abi::decode_response("decimals()(uint8)", &response).ok()?;
@@ -89,7 +89,7 @@ async fn try_read_decimals(rpc_urls: &[String], token: Address, block: Option<u6
 }
 async fn try_read_symbol(rpc_urls: &[String], token: Address, block: Option<u64>) -> Option<String> {
     let calldata = crate::abi::encode_call("symbol()", &[]).ok()?;
-    let response = crate::rpc::eth_call_with_fallback(rpc_urls, token, calldata, block)
+    let response = crate::rpc::eth_call_with_fallback(rpc_urls, token, calldata, block, None)
         .await
         .ok()?;
     let decoded = crate::abi::decode_response("symbol()(string)", &response).ok()?;

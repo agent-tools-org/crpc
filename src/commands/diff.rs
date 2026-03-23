@@ -34,8 +34,9 @@ pub async fn run(
             contract_addr,
             calldata.clone(),
             Some(from_block),
+            None,
         ),
-        crate::rpc::eth_call_with_fallback(&rpc_urls, contract_addr, calldata, to_block),
+        crate::rpc::eth_call_with_fallback(&rpc_urls, contract_addr, calldata, to_block, None),
     )?;
     let old_decoded = crate::abi::decode_response(sig, &old_response)?;
     let new_decoded = crate::abi::decode_response(sig, &new_response)?;

@@ -54,6 +54,9 @@ pub enum Commands {
         /// Block number for historical query (default: latest)
         #[arg(long)]
         block: Option<String>,
+        /// Sender address for simulation (msg.sender override)
+        #[arg(long)]
+        from: Option<String>,
     },
     /// ERC20 token balance query
     Balance {
@@ -365,8 +368,8 @@ async fn main() -> eyre::Result<()> {
     let rpc = cli.rpc.as_deref();
     let provider = cli.provider.as_deref();
     match cli.command {
-        Commands::Call { chain, contract, sig, args, raw, human, block } => {
-            commands::call::run(&chain, &contract, &sig, &args, raw, human, block.as_deref(), rpc, provider, cli.json).await
+        Commands::Call { chain, contract, sig, args, raw, human, block, from } => {
+            commands::call::run(&chain, &contract, &sig, &args, raw, human, block.as_deref(), from.as_deref(), rpc, provider, cli.json).await
         }
         Commands::Balance { chain, token, holder, raw, block } => {
             commands::balance::run(&chain, &token, &holder, raw, block.as_deref(), rpc, provider, cli.json).await

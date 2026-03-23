@@ -30,7 +30,7 @@ pub async fn run(
 
     // Get expected balance via balanceOf call
     let calldata = crate::abi::encode_call("balanceOf(address)", &[holder_addr.to_string()])?;
-    let response = crate::rpc::eth_call_with_fallback(&rpc_urls, token_addr, calldata, None).await?;
+    let response = crate::rpc::eth_call_with_fallback(&rpc_urls, token_addr, calldata, None, None).await?;
     let decoded = crate::abi::decode_response("balanceOf(address)(uint256)", &response)?;
     let balance_str = decoded
         .first()

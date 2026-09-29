@@ -72,8 +72,8 @@ const CHAIN_OPTIONS: &[ChainOption] = &[
         label: "Ethereum (1)",
         chain_id: 1,
         free_rpcs: &[
+            ("publicnode", "https://ethereum-rpc.publicnode.com"),
             ("llamarpc", "https://eth.llamarpc.com"),
-            ("ankr", "https://rpc.ankr.com/eth"),
         ],
     },
     ChainOption {
@@ -83,6 +83,7 @@ const CHAIN_OPTIONS: &[ChainOption] = &[
         free_rpcs: &[
             ("base", "https://mainnet.base.org"),
             ("llamarpc", "https://base.llamarpc.com"),
+            ("publicnode", "https://base-rpc.publicnode.com"),
         ],
     },
     ChainOption {
@@ -92,6 +93,7 @@ const CHAIN_OPTIONS: &[ChainOption] = &[
         free_rpcs: &[
             ("arbitrum", "https://arb1.arbitrum.io/rpc"),
             ("llamarpc", "https://arbitrum.llamarpc.com"),
+            ("publicnode", "https://arbitrum-one-rpc.publicnode.com"),
         ],
     },
     ChainOption {

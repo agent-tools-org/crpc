@@ -187,8 +187,8 @@ const BUILT_IN_CHAINS: &[BuiltInChain] = &[
         aliases: &["ethereum"],
         chain_id: 1,
         providers: &[
+            ("publicnode", "https://ethereum-rpc.publicnode.com"),
             ("llamarpc", "https://eth.llamarpc.com"),
-            ("ankr", "https://rpc.ankr.com/eth"),
         ],
     },
     BuiltInChain {
@@ -198,6 +198,7 @@ const BUILT_IN_CHAINS: &[BuiltInChain] = &[
         providers: &[
             ("base", "https://mainnet.base.org"),
             ("llamarpc", "https://base.llamarpc.com"),
+            ("publicnode", "https://base-rpc.publicnode.com"),
         ],
     },
     BuiltInChain {
@@ -207,6 +208,7 @@ const BUILT_IN_CHAINS: &[BuiltInChain] = &[
         providers: &[
             ("arbitrum", "https://arb1.arbitrum.io/rpc"),
             ("llamarpc", "https://arbitrum.llamarpc.com"),
+            ("publicnode", "https://arbitrum-one-rpc.publicnode.com"),
         ],
     },
     BuiltInChain {
@@ -472,7 +474,7 @@ mod tests {
         let config = Config::load()?;
         assert_eq!(
             config.resolve_rpc("eth", &RpcOpts::default())?,
-            "https://eth.llamarpc.com"
+            "https://ethereum-rpc.publicnode.com"
         );
         Ok(())
     }

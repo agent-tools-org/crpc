@@ -12,7 +12,10 @@ pub async fn run(
     let chain_id = crate::config::resolve_chain_id(chain)?;
 
     // Try Etherscan first
-    match crate::etherscan::EtherscanClient::new().gas_oracle(chain_id).await {
+    match crate::etherscan::EtherscanClient::new()
+        .gas_oracle(chain_id)
+        .await
+    {
         Ok(gas) => {
             if json {
                 println!(
@@ -50,10 +53,10 @@ async fn run_rpc_fallback(
         rpc: rpc_override.map(String::from),
         provider: provider.map(String::from),
     };
-    let rpc_url = config.resolve_rpc(chain, &opts)?;
+    let rpc_urls = config.resolve_rpc_all(chain, &opts)?;
 
-    let gas_price = crate::rpc::get_gas_price(&rpc_url).await?;
-    let priority_fee = crate::rpc::get_max_priority_fee(&rpc_url).await?;
+    let gas_price = crate::rpc::get_gas_price_with_fallback(&rpc_urls).await?;
+    let priority_fee = crate::rpc::get_max_priority_fee_with_fallback(&rpc_urls).await?;
 
     let gas_gwei = wei_to_gwei(gas_price);
     let priority_gwei = priority_fee.map(wei_to_gwei);

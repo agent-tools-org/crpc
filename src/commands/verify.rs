@@ -20,8 +20,11 @@ pub async fn run(
     provider: Option<&str>,
 ) -> Result<()> {
     let config = crate::config::Config::load()?;
-    let opts = crate::config::RpcOpts { rpc: rpc.map(String::from), provider: provider.map(String::from) };
-    let rpc_url = config.resolve_rpc(chain, &opts)?;
+    let opts = crate::config::RpcOpts {
+        rpc: rpc.map(String::from),
+        provider: provider.map(String::from),
+    };
+    let rpc_urls = config.resolve_rpc_all(chain, &opts)?;
     let mut rows = Vec::new();
     if !json {
         println!("{:<42} {:<9} {}", "Address", "Status", "Size");
@@ -34,16 +37,26 @@ pub async fn run(
                 continue;
             }
         };
-        let size = crate::rpc::get_code(&rpc_url, addr).await?.len();
+        let size = crate::rpc::get_code_with_fallback(&rpc_urls, addr)
+            .await?
+            .len();
         let is_contract = size > 0;
         if json {
-            rows.push(VerifyResult { address, is_contract, code_size: size });
+            rows.push(VerifyResult {
+                address,
+                is_contract,
+                code_size: size,
+            });
         } else {
             println!(
                 "{:<42} {:<9} {}",
                 address,
                 if is_contract { "CONTRACT" } else { "EOA" },
-                if is_contract { format_size(size) } else { "-".into() }
+                if is_contract {
+                    format_size(size)
+                } else {
+                    "-".into()
+                }
             );
         }
     }
@@ -54,12 +67,16 @@ pub async fn run(
 }
 
 fn format_size(size: usize) -> String {
-    if size < 1024 { format!("{size} B") } else { format!("{:.1} KB", size as f64 / 1024.0) }
+    if size < 1024 {
+        format!("{size} B")
+    } else {
+        format!("{:.1} KB", size as f64 / 1024.0)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{format_size, run, VerifyResult};
+    use super::{VerifyResult, format_size, run};
     use serde_json::Value;
 
     #[test]
@@ -76,7 +93,11 @@ mod tests {
             "0x1234".to_string(),
             "not-an-address".to_string(),
         ];
-        assert!(run("eth", &addresses, false, Some("http://127.0.0.1:9"), None).await.is_ok());
+        assert!(
+            run("eth", &addresses, false, Some("http://127.0.0.1:9"), None)
+                .await
+                .is_ok()
+        );
     }
 
     #[test]
@@ -97,9 +118,6 @@ mod tests {
             first.get("is_contract").and_then(Value::as_bool),
             Some(true)
         );
-        assert_eq!(
-            first.get("code_size").and_then(Value::as_u64),
-            Some(1024)
-        );
+        assert_eq!(first.get("code_size").and_then(Value::as_u64), Some(1024));
     }
 }

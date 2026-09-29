@@ -5,7 +5,7 @@ use alloy::eips::BlockId;
 use alloy::primitives::{Address, Bytes, U256};
 use alloy::providers::Provider;
 use alloy::rpc::types::transaction::{TransactionInput, TransactionRequest};
-use eyre::{eyre, Report, Result};
+use eyre::{Report, Result, eyre};
 use serde_json::json;
 use std::str::FromStr;
 
@@ -26,23 +26,41 @@ pub async fn run(
         rpc: rpc_override.map(String::from),
         provider: provider.map(String::from),
     };
-    let rpc_url = config.resolve_rpc(chain, &opts)?;
+    let rpc_urls = config.resolve_rpc_all(chain, &opts)?;
     let to_addr = parse_address("to", to)?;
     let calldata = parse_data(data)?;
     let block_number = crate::commands::block::parse_block_number(block)?;
     let tx = build_request(to_addr, calldata, from, value)?;
-    let provider = crate::rpc::make_provider(&rpc_url)?;
-    let block_id = block_number.map(BlockId::number).unwrap_or_else(BlockId::latest);
+    let block_id = block_number
+        .map(BlockId::number)
+        .unwrap_or_else(BlockId::latest);
 
-    match provider.call(tx).block(block_id).await {
-        Ok(response) => print_success(&response, sig, json_output),
-        Err(err) => {
-            if let Some(payload) = err.as_error_resp() {
-                if let Some(revert_data) = payload.as_revert_data() {
-                    return print_revert(revert_data, json_output);
+    let result = crate::rpc::with_fallback(&rpc_urls, move |rpc_url| {
+        let tx = tx.clone();
+        async move {
+            let provider = crate::rpc::make_provider(&rpc_url)?;
+            match provider.call(tx).block(block_id).await {
+                Ok(response) => Ok(response),
+                Err(err) => {
+                    if let Some(payload) = err.as_error_resp() {
+                        if let Some(revert_data) = payload.as_revert_data() {
+                            return Err(Report::new(crate::rpc::RevertError { data: revert_data }));
+                        }
+                    }
+                    Err(err.into())
                 }
             }
-            Err(Report::new(err))
+        }
+    })
+    .await;
+
+    match result {
+        Ok(response) => print_success(&response, sig, json_output),
+        Err(err) => {
+            if let Some(revert) = err.downcast_ref::<crate::rpc::RevertError>() {
+                return print_revert(revert.data.clone(), json_output);
+            }
+            Err(err)
         }
     }
 }
@@ -66,9 +84,12 @@ fn build_request(
 }
 
 fn parse_address(name: &str, value: &str) -> Result<Address> {
-    value
-        .parse::<Address>()
-        .map_err(|_| eyre!("invalid {name} address: expected 0x + 40 hex chars, got {:?}", value))
+    value.parse::<Address>().map_err(|_| {
+        eyre!(
+            "invalid {name} address: expected 0x + 40 hex chars, got {:?}",
+            value
+        )
+    })
 }
 
 fn parse_data(value: &str) -> Result<Bytes> {
@@ -106,7 +127,10 @@ fn print_success(response: &Bytes, sig: Option<&str>, json_output: bool) -> Resu
         }
         println!("Status:  Success");
         println!("Result:");
-        println!("{}", crate::format::format_values(&decoded, crate::format::FormatMode::Decode));
+        println!(
+            "{}",
+            crate::format::format_values(&decoded, crate::format::FormatMode::Decode)
+        );
         return Ok(());
     }
 
@@ -182,7 +206,8 @@ mod tests {
     fn build_request_applies_optional_fields() {
         let to = parse_address("to", "0x0000000000000000000000000000000000000001").unwrap();
         let from = "0x0000000000000000000000000000000000000002";
-        let tx = build_request(to, Bytes::from(vec![0xde, 0xad]), Some(from), Some("0x2a")).unwrap();
+        let tx =
+            build_request(to, Bytes::from(vec![0xde, 0xad]), Some(from), Some("0x2a")).unwrap();
         assert_eq!(tx.from, Some(parse_address("from", from).unwrap()));
         assert_eq!(tx.value, Some(U256::from(42_u64)));
         assert_eq!(tx.to, Some(TxKind::Call(to)));

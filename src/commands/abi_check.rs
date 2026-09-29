@@ -2,7 +2,7 @@
 // Checks verified ABI first, then falls back to PUSH4 selectors in on-chain bytecode
 
 use alloy::primitives::Address;
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use serde_json::Value;
 
 pub async fn run(
@@ -19,7 +19,7 @@ pub async fn run(
         rpc: rpc_override.map(String::from),
         provider: provider.map(String::from),
     };
-    let rpc_url = config.resolve_rpc(chain, &opts)?;
+    let rpc_urls = config.resolve_rpc_all(chain, &opts)?;
     let chain_id = crate::config::resolve_chain_id(chain)?;
     let outcome = check_selector(
         chain_id,
@@ -27,7 +27,7 @@ pub async fn run(
         request.selector,
         sig,
         &request.selector_hex,
-        &rpc_url,
+        &rpc_urls,
     )
     .await?;
     if json {
@@ -61,13 +61,18 @@ async fn check_selector(
     selector: [u8; 4],
     queried_sig: &str,
     selector_hex: &str,
-    rpc_url: &str,
+    rpc_urls: &[String],
 ) -> Result<AbiCheckOutcome> {
     let client = crate::etherscan::EtherscanClient::new();
     let contract_text = contract.to_string();
     match client.get_abi(chain_id, &contract_text).await {
-        Ok(entries) => Ok(check_abi_entries(selector_hex, queried_sig, contract_text, &entries)?),
-        Err(_) => check_bytecode(contract, contract_text, selector, selector_hex, rpc_url).await,
+        Ok(entries) => Ok(check_abi_entries(
+            selector_hex,
+            queried_sig,
+            contract_text,
+            &entries,
+        )?),
+        Err(_) => check_bytecode(contract, contract_text, selector, selector_hex, rpc_urls).await,
     }
 }
 
@@ -108,9 +113,9 @@ async fn check_bytecode(
     contract_text: String,
     selector: [u8; 4],
     selector_hex: &str,
-    rpc_url: &str,
+    rpc_urls: &[String],
 ) -> Result<AbiCheckOutcome> {
-    let code = crate::rpc::get_code(rpc_url, contract).await?;
+    let code = crate::rpc::get_code_with_fallback(rpc_urls, contract).await?;
     let found = crate::abi::extract_selectors_from_bytecode(&code).contains(&selector);
     Ok(AbiCheckOutcome {
         selector: selector_hex.to_string(),
@@ -209,7 +214,8 @@ mod tests {
 
     #[test]
     fn build_request_rejects_invalid_signature() {
-        let err = build_request("0x0000000000000000000000000000000000000001", "transfer").unwrap_err();
+        let err =
+            build_request("0x0000000000000000000000000000000000000001", "transfer").unwrap_err();
         assert!(err.to_string().contains("missing argument list"));
     }
 

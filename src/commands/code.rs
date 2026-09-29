@@ -2,7 +2,7 @@
 // Useful for verifying if an address is a contract or EOA
 
 use alloy::primitives::Address;
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 
 pub async fn run(
     chain: &str,
@@ -16,12 +16,12 @@ pub async fn run(
         rpc: rpc_override.map(String::from),
         provider: provider.map(String::from),
     };
-    let rpc_url = config.resolve_rpc(chain, &opts)?;
+    let rpc_urls = config.resolve_rpc_all(chain, &opts)?;
     let addr = address
         .parse::<Address>()
         .map_err(|err| eyre!("invalid address: {err}"))?;
 
-    let code = crate::rpc::get_code(&rpc_url, addr).await?;
+    let code = crate::rpc::get_code_with_fallback(&rpc_urls, addr).await?;
     let size = code.len();
     let is_contract = size > 0;
 

@@ -19,6 +19,7 @@ pub mod gas;
 pub mod history;
 pub mod init;
 pub mod logs;
+pub mod logs_chunk;
 pub mod mapping_slot;
 pub mod pools;
 pub mod selectors;

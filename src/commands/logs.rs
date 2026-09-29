@@ -452,10 +452,8 @@ async fn resolve_block_range(
             Some(b) => b,
             None => crate::rpc::get_block_number_with_fallback(rpc_urls).await?,
         };
-        let from_res = match parse_block_number(from)? {
-            Some(b) => b,
-            None => 0,
-        };
+        // No --from keeps the RPC default: the latest block only, not a crawl from genesis.
+        let from_res = parse_block_number(from)?.unwrap_or(to_res);
         Ok((from_res, to_res))
     }
 }

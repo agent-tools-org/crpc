@@ -2,8 +2,8 @@
 // Uses RPC bytecode fetch plus optional Etherscan/OpenChain lookups.
 // Exports the run entrypoint for CLI dispatch.
 
-use alloy::primitives::{keccak256, Address};
-use eyre::{eyre, Result};
+use alloy::primitives::{Address, keccak256};
+use eyre::{Result, eyre};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -20,11 +20,11 @@ pub async fn run(
         rpc: rpc_override.map(String::from),
         provider: provider.map(String::from),
     };
-    let rpc_url = config.resolve_rpc(chain, &opts)?;
+    let rpc_urls = config.resolve_rpc_all(chain, &opts)?;
     let address = contract
         .parse::<Address>()
         .map_err(|err| eyre!("invalid address: {err}"))?;
-    let bytecode = crate::rpc::get_code(&rpc_url, address).await?;
+    let bytecode = crate::rpc::get_code_with_fallback(&rpc_urls, address).await?;
     if bytecode.is_empty() {
         return Err(eyre!("address is an EOA, no bytecode"));
     }
@@ -77,7 +77,10 @@ pub(crate) async fn resolve_selector_names(
 ) -> HashMap<[u8; 4], String> {
     let mut names = HashMap::new();
     if let Ok(chain_id) = crate::config::resolve_chain_id(chain) {
-        if let Ok(entries) = crate::etherscan::EtherscanClient::new().get_abi(chain_id, contract).await {
+        if let Ok(entries) = crate::etherscan::EtherscanClient::new()
+            .get_abi(chain_id, contract)
+            .await
+        {
             names.extend(selectors_from_abi(&entries));
         }
     }

@@ -3,20 +3,19 @@
 
 #![allow(dead_code)]
 
-use alloy::primitives::{Address, Bytes, B256, U256};
-use alloy::providers::{Provider, ProviderBuilder, RootProvider};
-use alloy::rpc::types::{Block, Filter, Log, Transaction, TransactionReceipt};
-use alloy::rpc::types::transaction::{TransactionInput, TransactionRequest};
 use alloy::dyn_abi::{DynSolValue, FunctionExt, JsonAbiExt};
 use alloy::eips::{BlockId, BlockNumberOrTag};
 use alloy::json_abi::Function;
-use eyre::{eyre, Report, Result};
+use alloy::primitives::{Address, B256, Bytes, U256};
+use alloy::providers::{Provider, ProviderBuilder, RootProvider};
+use alloy::rpc::types::transaction::{TransactionInput, TransactionRequest};
+use alloy::rpc::types::{Block, Filter, Log, Transaction, TransactionReceipt};
+use eyre::{Report, Result, eyre};
 use reqwest::Url;
 use std::fmt;
 use std::future::Future;
 
-const MULTICALL3_SIGNATURE: &str =
-    "aggregate3((address,bool,bytes)[])(tuple(bool,bytes)[])";
+const MULTICALL3_SIGNATURE: &str = "aggregate3((address,bool,bytes)[])(tuple(bool,bytes)[])";
 
 fn multicall3_address() -> Address {
     Address::parse_checksummed("0xcA11bde05977b3631167028862bE2a173976CA11", None)
@@ -37,7 +36,11 @@ pub struct RevertError {
 
 impl fmt::Display for RevertError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "eth_call reverted with {} bytes of data", self.data.len())
+        write!(
+            f,
+            "eth_call reverted with {} bytes of data",
+            self.data.len()
+        )
     }
 }
 
@@ -57,7 +60,9 @@ pub async fn eth_call(
     from: Option<Address>,
 ) -> Result<Bytes> {
     let provider = make_provider(rpc_url)?;
-    let mut tx = TransactionRequest::default().to(to).input(TransactionInput::new(calldata));
+    let mut tx = TransactionRequest::default()
+        .to(to)
+        .input(TransactionInput::new(calldata));
     if let Some(sender) = from {
         tx = tx.from(sender);
     }
@@ -99,7 +104,10 @@ pub async fn get_storage_at(
 ) -> Result<B256> {
     let provider = make_provider(rpc_url)?;
     let block_id = block.map(BlockId::number).unwrap_or_else(BlockId::latest);
-    let value = provider.get_storage_at(address, slot).block_id(block_id).await?;
+    let value = provider
+        .get_storage_at(address, slot)
+        .block_id(block_id)
+        .await?;
     Ok(value.into())
 }
 
@@ -125,8 +133,14 @@ pub async fn get_block(rpc_url: &str, number: Option<u64>) -> Result<Option<Bloc
 }
 
 /// Get block data with fallback across multiple RPC URLs
-pub async fn get_block_with_fallback(rpc_urls: &[String], number: Option<u64>) -> Result<Option<Block>> {
-    with_fallback(rpc_urls, move |rpc_url| async move { get_block(&rpc_url, number).await }).await
+pub async fn get_block_with_fallback(
+    rpc_urls: &[String],
+    number: Option<u64>,
+) -> Result<Option<Block>> {
+    with_fallback(rpc_urls, move |rpc_url| async move {
+        get_block(&rpc_url, number).await
+    })
+    .await
 }
 
 /// Get a transaction by hash
@@ -140,8 +154,10 @@ pub async fn get_transaction_with_fallback(
     rpc_urls: &[String],
     hash: B256,
 ) -> Result<Option<Transaction>> {
-    with_fallback(rpc_urls, move |rpc_url| async move { get_transaction(&rpc_url, hash).await })
-        .await
+    with_fallback(rpc_urls, move |rpc_url| async move {
+        get_transaction(&rpc_url, hash).await
+    })
+    .await
 }
 
 /// Get a receipt for a transaction
@@ -151,10 +167,7 @@ pub async fn get_receipt(rpc_url: &str, hash: B256) -> Result<Option<Transaction
 }
 
 /// Call debug_traceTransaction with callTracer
-pub async fn debug_trace_transaction(
-    rpc_url: &str,
-    hash: B256,
-) -> Result<serde_json::Value> {
+pub async fn debug_trace_transaction(rpc_url: &str, hash: B256) -> Result<serde_json::Value> {
     let provider = make_provider(rpc_url)?;
     let result: serde_json::Value = provider
         .raw_request(
@@ -165,18 +178,40 @@ pub async fn debug_trace_transaction(
     Ok(result)
 }
 
+/// Call debug_traceTransaction with fallback across multiple RPC URLs
+pub async fn debug_trace_transaction_with_fallback(
+    rpc_urls: &[String],
+    hash: B256,
+) -> Result<serde_json::Value> {
+    with_fallback(rpc_urls, move |rpc_url| async move {
+        debug_trace_transaction(&rpc_url, hash).await
+    })
+    .await
+}
+
 /// Get transaction receipt with fallback across multiple RPC URLs
 pub async fn get_receipt_with_fallback(
     rpc_urls: &[String],
     hash: B256,
 ) -> Result<Option<TransactionReceipt>> {
-    with_fallback(rpc_urls, move |rpc_url| async move { get_receipt(&rpc_url, hash).await }).await
+    with_fallback(rpc_urls, move |rpc_url| async move {
+        get_receipt(&rpc_url, hash).await
+    })
+    .await
 }
 
 /// Get current gas price (wei)
 pub async fn get_gas_price(rpc_url: &str) -> Result<u128> {
     let provider = make_provider(rpc_url)?;
     Ok(provider.get_gas_price().await?)
+}
+
+/// Get current gas price with fallback across multiple RPC URLs
+pub async fn get_gas_price_with_fallback(rpc_urls: &[String]) -> Result<u128> {
+    with_fallback(rpc_urls, move |rpc_url| async move {
+        get_gas_price(&rpc_url).await
+    })
+    .await
 }
 
 /// Get max priority fee per gas (wei), returns None if unsupported
@@ -188,10 +223,26 @@ pub async fn get_max_priority_fee(rpc_url: &str) -> Result<Option<u128>> {
     }
 }
 
+/// Get max priority fee with fallback across multiple RPC URLs
+pub async fn get_max_priority_fee_with_fallback(rpc_urls: &[String]) -> Result<Option<u128>> {
+    with_fallback(rpc_urls, move |rpc_url| async move {
+        get_max_priority_fee(&rpc_url).await
+    })
+    .await
+}
+
 /// Get latest block number
 pub async fn get_block_number(rpc_url: &str) -> Result<u64> {
     let provider = make_provider(rpc_url)?;
     Ok(provider.get_block_number().await?)
+}
+
+/// Get latest block number with fallback across multiple RPC URLs
+pub async fn get_block_number_with_fallback(rpc_urls: &[String]) -> Result<u64> {
+    with_fallback(rpc_urls, move |rpc_url| async move {
+        get_block_number(&rpc_url).await
+    })
+    .await
 }
 
 /// Get contract bytecode at address
@@ -200,13 +251,27 @@ pub async fn get_code(rpc_url: &str, address: Address) -> Result<Bytes> {
     Ok(provider.get_code_at(address).await?)
 }
 
+/// Get contract bytecode with fallback across multiple RPC URLs
+pub async fn get_code_with_fallback(rpc_urls: &[String], address: Address) -> Result<Bytes> {
+    with_fallback(rpc_urls, move |rpc_url| async move {
+        get_code(&rpc_url, address).await
+    })
+    .await
+}
+
 /// Query event logs with filters
-pub async fn get_logs(
-    rpc_url: &str,
-    filter: Filter,
-) -> Result<Vec<Log>> {
+pub async fn get_logs(rpc_url: &str, filter: Filter) -> Result<Vec<Log>> {
     let provider = make_provider(rpc_url)?;
     Ok(provider.get_logs(&filter).await?)
+}
+
+/// Query event logs with fallback across multiple RPC URLs
+pub async fn get_logs_with_fallback(rpc_urls: &[String], filter: Filter) -> Result<Vec<Log>> {
+    with_fallback(rpc_urls, move |rpc_url| {
+        let filter = filter.clone();
+        async move { get_logs(&rpc_url, filter).await }
+    })
+    .await
 }
 
 /// Execute multiple calls through Multicall3 aggregate3
@@ -301,7 +366,7 @@ fn decode_multicall3(function: &Function, response: &[u8]) -> Result<Vec<Bytes>>
     Ok(outs)
 }
 
-async fn with_fallback<F, Fut, T>(rpc_urls: &[String], mut f: F) -> Result<T>
+pub async fn with_fallback<F, Fut, T>(rpc_urls: &[String], mut f: F) -> Result<T>
 where
     F: FnMut(String) -> Fut,
     Fut: Future<Output = Result<T>>,
@@ -324,8 +389,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eyre::Result as EyreResult;
     use alloy::primitives::Bytes;
+    use eyre::Result as EyreResult;
 
     #[test]
     fn make_provider_rejects_invalid_urls() {
@@ -336,8 +401,14 @@ mod tests {
     fn multicall3_encoding_roundtrip() -> EyreResult<()> {
         let aggregate = multicall3_function()?;
         let calls = vec![
-            (Address::parse_checksummed("0x0000000000000000000000000000000000000001", None)?, Bytes::new()),
-            (Address::parse_checksummed("0x0000000000000000000000000000000000000002", None)?, Bytes::from(vec![1, 2, 3])),
+            (
+                Address::parse_checksummed("0x0000000000000000000000000000000000000001", None)?,
+                Bytes::new(),
+            ),
+            (
+                Address::parse_checksummed("0x0000000000000000000000000000000000000002", None)?,
+                Bytes::from(vec![1, 2, 3]),
+            ),
         ];
         let payload = encode_multicall3(&aggregate, &calls)?;
         assert_eq!(&payload.as_ref()[..4], aggregate.selector().as_slice());

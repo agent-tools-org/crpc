@@ -4,11 +4,11 @@
 use alloy::dyn_abi::{DynSolReturns, DynSolType};
 use alloy::primitives::{Address, keccak256};
 use alloy::rpc::types::{Filter, Log};
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use hex::encode as hex_encode;
-use serde_json::{json, Map as JsonMap, Value as JsonValue};
+use serde_json::{Map as JsonMap, Value as JsonValue, json};
 
-use crate::abi::{dyn_values_to_decoded, DecodedValue};
+use crate::abi::{DecodedValue, dyn_values_to_decoded};
 use crate::commands::block::parse_block_number;
 
 pub async fn run(
@@ -29,7 +29,7 @@ pub async fn run(
         rpc: rpc_override.map(String::from),
         provider: provider.map(String::from),
     };
-    let rpc_url = config.resolve_rpc(chain, &opts)?;
+    let rpc_urls = config.resolve_rpc_all(chain, &opts)?;
     if limit == 0 {
         return Ok(());
     }
@@ -41,17 +41,25 @@ pub async fn run(
     } else {
         None
     };
-    // Resolve block range: --blocks N takes priority over --from/--to
-    let (from_block, to_block) = if let Some(n) = blocks {
-        let latest = crate::rpc::get_block_number(&rpc_url).await?;
-        (Some(latest.saturating_sub(n)), Some(latest))
-    } else {
-        (parse_block_number(from)?, parse_block_number(to)?)
-    };
+    let (from_resolved, to_resolved) =
+        resolve_block_range(&rpc_urls, blocks, from, to).await?;
     let raw_topic0 = parse_topic0(topic0)?;
-    let filter = build_filter(target_address, parsed_event.as_ref(), raw_topic0.as_ref(), from_block, to_block);
-    let logs = crate::rpc::get_logs(&rpc_url, filter).await?;
-    let logs = logs.into_iter().take(limit).collect::<Vec<_>>();
+
+    let filter = build_filter(
+        target_address,
+        parsed_event.as_ref(),
+        raw_topic0.as_ref(),
+        None,
+        None,
+    );
+    let logs = crate::commands::logs_chunk::fetch_logs_chunked(
+        &rpc_urls,
+        filter,
+        from_resolved,
+        to_resolved,
+        limit,
+    )
+    .await?;
     if json {
         let entries = logs
             .iter()
@@ -70,7 +78,10 @@ fn parse_topic0(raw: Option<&str>) -> Result<Option<[u8; 32]>> {
     let Some(raw) = raw else { return Ok(None) };
     let hex_str = raw.strip_prefix("0x").unwrap_or(raw);
     if hex_str.len() != 64 {
-        return Err(eyre!("topic0 must be 32 bytes (64 hex chars), got {}", hex_str.len()));
+        return Err(eyre!(
+            "topic0 must be 32 bytes (64 hex chars), got {}",
+            hex_str.len()
+        ));
     }
     let bytes = hex::decode(hex_str).map_err(|e| eyre!("invalid topic0 hex: {e}"))?;
     let mut topic = [0u8; 32];
@@ -109,7 +120,11 @@ fn render_log_json(log: &Log, event: Option<&ParsedEvent>) -> JsonValue {
     entry.insert("block".to_string(), json!(log.block_number));
     entry.insert(
         "tx".to_string(),
-        json!(log.transaction_hash.as_ref().map(|hash| hex_prefixed(hash.as_ref()))),
+        json!(
+            log.transaction_hash
+                .as_ref()
+                .map(|hash| hex_prefixed(hash.as_ref()))
+        ),
     );
     let topics = log
         .topics()
@@ -117,7 +132,10 @@ fn render_log_json(log: &Log, event: Option<&ParsedEvent>) -> JsonValue {
         .map(|topic| hex_prefixed(topic.as_ref()))
         .collect::<Vec<_>>();
     entry.insert("topics".to_string(), json!(topics));
-    entry.insert("data".to_string(), json!(hex_prefixed(log.data().data.as_ref())));
+    entry.insert(
+        "data".to_string(),
+        json!(hex_prefixed(log.data().data.as_ref())),
+    );
     if let Some(event) = event {
         entry.insert("event".to_string(), json!(event.signature));
         let decoded_params = decode_event_params(log, event);
@@ -177,7 +195,8 @@ fn decode_event_params(log: &Log, event: &ParsedEvent) -> Vec<DecodedParam> {
         .filter(|param| !param.indexed)
         .map(|param| param.ty.clone())
         .collect::<Vec<_>>();
-    let decoded_data = decode_data_values(&non_indexed_types, log.data().data.as_ref()).unwrap_or_default();
+    let decoded_data =
+        decode_data_values(&non_indexed_types, log.data().data.as_ref()).unwrap_or_default();
     let mut non_indexed_iter = decoded_data.into_iter();
     let mut topic_cursor = 1;
     let mut result = Vec::with_capacity(event.params.len());
@@ -288,10 +307,7 @@ fn parse_event_signature(raw: &str) -> Result<ParsedEvent> {
     } else {
         format!("{}({})", name, type_list)
     };
-    Ok(ParsedEvent {
-        signature,
-        params,
-    })
+    Ok(ParsedEvent { signature, params })
 }
 
 fn parse_event_param(src: &str) -> Result<EventParam> {
@@ -320,7 +336,11 @@ fn parse_event_param(src: &str) -> Result<EventParam> {
     let ty = DynSolType::parse(type_str)
         .map_err(|err| eyre!("failed to parse event parameter type {type_str}: {err}"))?;
     let type_name = ty.sol_type_name().into_owned();
-    Ok(EventParam { ty, type_name, indexed })
+    Ok(EventParam {
+        ty,
+        type_name,
+        indexed,
+    })
 }
 
 fn split_top_level(src: &str, delimiter: char) -> Vec<&str> {
@@ -331,7 +351,7 @@ fn split_top_level(src: &str, delimiter: char) -> Vec<&str> {
         match ch {
             '(' | '[' => depth += 1,
             ')' | ']' => depth = depth.saturating_sub(1),
-            
+
             c if c == delimiter && depth == 0 => {
                 parts.push(src[start..idx].trim());
                 start = idx + c.len_utf8();
@@ -411,6 +431,31 @@ mod tests {
         assert_eq!(event.signature, "Transfer(address,address,uint256)");
         let topic = keccak256(event.signature.as_bytes());
         let encoded = hex::encode(topic.as_slice());
-        assert_eq!(encoded, "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef");
+        assert_eq!(
+            encoded,
+            "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+        );
+    }
+}
+
+async fn resolve_block_range(
+    rpc_urls: &[String],
+    blocks: Option<u64>,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> Result<(u64, u64)> {
+    if let Some(n) = blocks {
+        let latest = crate::rpc::get_block_number_with_fallback(rpc_urls).await?;
+        Ok((latest.saturating_sub(n), latest))
+    } else {
+        let to_res = match parse_block_number(to)? {
+            Some(b) => b,
+            None => crate::rpc::get_block_number_with_fallback(rpc_urls).await?,
+        };
+        let from_res = match parse_block_number(from)? {
+            Some(b) => b,
+            None => 0,
+        };
+        Ok((from_res, to_res))
     }
 }

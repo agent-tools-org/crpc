@@ -4,32 +4,64 @@
 use alloy::dyn_abi::{DynSolReturns, DynSolType};
 use alloy::primitives::{Address, B256, keccak256};
 use alloy::rpc::types::Filter;
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use serde_json::json;
 
 use crate::commands::block::parse_block_number;
 
-const DEFAULT_EVENT: &str = "PairCreated(address indexed token0, address indexed token1, address pair, uint256)";
+const DEFAULT_EVENT: &str =
+    "PairCreated(address indexed token0, address indexed token1, address pair, uint256)";
 const DEFAULT_BLOCKS: u64 = 10_000;
 const PAGE_SIZE: u64 = 2_000;
 
-pub async fn run(chain: &str, factory: &str, event: Option<&str>, from: Option<&str>, to: Option<&str>, limit: usize, json: bool, rpc: Option<&str>, provider: Option<&str>) -> Result<()> {
-    if limit == 0 { return Ok(()); }
+pub async fn run(
+    chain: &str,
+    factory: &str,
+    event: Option<&str>,
+    from: Option<&str>,
+    to: Option<&str>,
+    limit: usize,
+    json: bool,
+    rpc: Option<&str>,
+    provider: Option<&str>,
+) -> Result<()> {
+    if limit == 0 {
+        return Ok(());
+    }
     let config = crate::config::Config::load()?;
-    let rpc_url = config.resolve_rpc(chain, &crate::config::RpcOpts { rpc: rpc.map(String::from), provider: provider.map(String::from) })?;
-    let factory = factory.parse::<Address>().map_err(|err| eyre!("invalid address: {err}"))?;
+    let rpc_urls = config.resolve_rpc_all(
+        chain,
+        &crate::config::RpcOpts {
+            rpc: rpc.map(String::from),
+            provider: provider.map(String::from),
+        },
+    )?;
+    let factory = factory
+        .parse::<Address>()
+        .map_err(|err| eyre!("invalid address: {err}"))?;
     let event = parse_event_signature(event.unwrap_or(DEFAULT_EVENT))?;
-    let latest = crate::rpc::get_block_number(&rpc_url).await?;
+    let latest = crate::rpc::get_block_number_with_fallback(&rpc_urls).await?;
     let to_block = parse_block_number(to)?.unwrap_or(latest);
     let from_block = parse_block_number(from)?.unwrap_or(to_block.saturating_sub(DEFAULT_BLOCKS));
     let mut pools = Vec::new();
     let mut start = from_block;
     while start <= to_block && pools.len() < limit {
         let end = start.saturating_add(PAGE_SIZE - 1).min(to_block);
-        let filter = Filter::new().address(factory).event_signature(topic0(&event)).from_block(start).to_block(end);
-        for log in crate::rpc::get_logs(&rpc_url, filter).await? {
-            pools.push(extract_pool(log.topics(), log.data().data.as_ref(), log.block_number, &event)?);
-            if pools.len() == limit { break; }
+        let filter = Filter::new()
+            .address(factory)
+            .event_signature(topic0(&event))
+            .from_block(start)
+            .to_block(end);
+        for log in crate::rpc::get_logs_with_fallback(&rpc_urls, filter).await? {
+            pools.push(extract_pool(
+                log.topics(),
+                log.data().data.as_ref(),
+                log.block_number,
+                &event,
+            )?);
+            if pools.len() == limit {
+                break;
+            }
         }
         start = end.saturating_add(1);
     }
@@ -39,19 +71,32 @@ pub async fn run(chain: &str, factory: &str, event: Option<&str>, from: Option<&
     }
     println!("{:<42} {:<42} {}", "Pool", "Token0", "Token1");
     for pool in pools {
-        println!("{:<42} {:<42} {}", short(pool.pool), token_label(chain, pool.token0, &config), token_label(chain, pool.token1, &config));
+        println!(
+            "{:<42} {:<42} {}",
+            short(pool.pool),
+            token_label(chain, pool.token0, &config),
+            token_label(chain, pool.token1, &config)
+        );
     }
     Ok(())
 }
 
-fn extract_pool(topics: &[B256], data: &[u8], block: Option<u64>, event: &ParsedEvent) -> Result<PoolRow> {
+fn extract_pool(
+    topics: &[B256],
+    data: &[u8],
+    block: Option<u64>,
+    event: &ParsedEvent,
+) -> Result<PoolRow> {
     let indexed = topics.len().saturating_sub(1).min(event.params.len());
     let decoded = DynSolReturns::new(event.params[indexed..].to_vec()).abi_decode_output(data)?;
     let mut addresses = Vec::new();
     for (idx, ty) in event.params.iter().enumerate() {
-        if !matches!(ty, DynSolType::Address) { continue; }
+        if !matches!(ty, DynSolType::Address) {
+            continue;
+        }
         let address = if idx < indexed {
-            let values = DynSolReturns::new(vec![DynSolType::Address]).abi_decode_output(topics[idx + 1].as_ref())?;
+            let values = DynSolReturns::new(vec![DynSolType::Address])
+                .abi_decode_output(topics[idx + 1].as_ref())?;
             values[0].as_address()
         } else {
             decoded[idx - indexed].as_address()
@@ -59,8 +104,17 @@ fn extract_pool(topics: &[B256], data: &[u8], block: Option<u64>, event: &Parsed
         .ok_or_else(|| eyre!("expected address"))?;
         addresses.push(address);
     }
-    if addresses.len() < 3 { return Err(eyre!("event must expose token0, token1, and pool/pair addresses")); }
-    Ok(PoolRow { pool: *addresses.last().unwrap(), token0: addresses[0], token1: addresses[1], block })
+    if addresses.len() < 3 {
+        return Err(eyre!(
+            "event must expose token0, token1, and pool/pair addresses"
+        ));
+    }
+    Ok(PoolRow {
+        pool: *addresses.last().unwrap(),
+        token0: addresses[0],
+        token1: addresses[1],
+        block,
+    })
 }
 
 fn token_label(chain: &str, token: Address, config: &crate::config::Config) -> String {
@@ -93,18 +147,38 @@ struct PoolRow {
 
 fn parse_event_signature(raw: &str) -> Result<ParsedEvent> {
     let trimmed = raw.trim();
-    let start = trimmed.find('(').ok_or_else(|| eyre!("event signature missing parameter list"))?;
-    let end = trimmed.rfind(')').ok_or_else(|| eyre!("event signature missing closing ')'"))?;
+    let start = trimmed
+        .find('(')
+        .ok_or_else(|| eyre!("event signature missing parameter list"))?;
+    let end = trimmed
+        .rfind(')')
+        .ok_or_else(|| eyre!("event signature missing closing ')'"))?;
     let name = trimmed[..start].trim();
-    let params = trimmed[start + 1..end].split(',').filter(|part| !part.trim().is_empty()).map(parse_param_type).collect::<Result<Vec<_>>>()?;
-    let canonical = params.iter().map(|ty| ty.sol_type_name().into_owned()).collect::<Vec<_>>().join(",");
-    Ok(ParsedEvent { signature: format!("{name}({canonical})"), params })
+    let params = trimmed[start + 1..end]
+        .split(',')
+        .filter(|part| !part.trim().is_empty())
+        .map(parse_param_type)
+        .collect::<Result<Vec<_>>>()?;
+    let canonical = params
+        .iter()
+        .map(|ty| ty.sol_type_name().into_owned())
+        .collect::<Vec<_>>()
+        .join(",");
+    Ok(ParsedEvent {
+        signature: format!("{name}({canonical})"),
+        params,
+    })
 }
 
 fn parse_param_type(raw: &str) -> Result<DynSolType> {
-    let ty = raw.split_whitespace().find(|part| *part != "indexed").ok_or_else(|| eyre!("event parameter missing type"))?;
+    let ty = raw
+        .split_whitespace()
+        .find(|part| *part != "indexed")
+        .ok_or_else(|| eyre!("event parameter missing type"))?;
     let mut types = crate::abi::parse_type_list(&format!("({ty})"))?;
-    types.pop().ok_or_else(|| eyre!("event parameter missing type"))
+    types
+        .pop()
+        .ok_or_else(|| eyre!("event parameter missing type"))
 }
 
 #[cfg(test)]
@@ -114,7 +188,10 @@ mod tests {
     #[test]
     fn canonicalizes_event_signature() {
         let event = parse_event_signature("PoolCreated(address token0, address token1, uint24 fee, int24 tickSpacing, address pool)").unwrap();
-        assert_eq!(event.signature, "PoolCreated(address,address,uint24,int24,address)");
+        assert_eq!(
+            event.signature,
+            "PoolCreated(address,address,uint24,int24,address)"
+        );
     }
 
     #[test]
@@ -137,9 +214,15 @@ mod tests {
 
     #[test]
     fn extracts_pair_created_addresses() {
-        let token0: Address = "0x0000000000000000000000000000000000000001".parse().unwrap();
-        let token1: Address = "0x0000000000000000000000000000000000000002".parse().unwrap();
-        let pair: Address = "0x0000000000000000000000000000000000000003".parse().unwrap();
+        let token0: Address = "0x0000000000000000000000000000000000000001"
+            .parse()
+            .unwrap();
+        let token1: Address = "0x0000000000000000000000000000000000000002"
+            .parse()
+            .unwrap();
+        let pair: Address = "0x0000000000000000000000000000000000000003"
+            .parse()
+            .unwrap();
         let event = parse_event_signature(DEFAULT_EVENT).unwrap();
         let topics = vec![topic0(&event), topic(token0), topic(token1)];
         let mut data = vec![0u8; 64];
@@ -154,14 +237,23 @@ mod tests {
 
     #[test]
     fn extract_pool_supports_events_with_three_and_four_address_params() {
-        let token0: Address = "0x0000000000000000000000000000000000000001".parse().unwrap();
-        let token1: Address = "0x0000000000000000000000000000000000000002".parse().unwrap();
-        let fee_recipient: Address = "0x0000000000000000000000000000000000000003".parse().unwrap();
-        let pool: Address = "0x0000000000000000000000000000000000000004".parse().unwrap();
+        let token0: Address = "0x0000000000000000000000000000000000000001"
+            .parse()
+            .unwrap();
+        let token1: Address = "0x0000000000000000000000000000000000000002"
+            .parse()
+            .unwrap();
+        let fee_recipient: Address = "0x0000000000000000000000000000000000000003"
+            .parse()
+            .unwrap();
+        let pool: Address = "0x0000000000000000000000000000000000000004"
+            .parse()
+            .unwrap();
 
-        let event_three =
-            parse_event_signature("PoolCreated(address indexed token0, address indexed token1, address pool)")
-                .unwrap();
+        let event_three = parse_event_signature(
+            "PoolCreated(address indexed token0, address indexed token1, address pool)",
+        )
+        .unwrap();
         let topics_three = vec![topic0(&event_three), topic(token0), topic(token1)];
         let data_three = encode_addresses(&[pool]);
         let row_three = extract_pool(&topics_three, &data_three, Some(7), &event_three).unwrap();
@@ -186,8 +278,16 @@ mod tests {
         let event = parse_event_signature(DEFAULT_EVENT).unwrap();
         let topics = vec![
             topic0(&event),
-            topic("0x0000000000000000000000000000000000000001".parse().unwrap()),
-            topic("0x0000000000000000000000000000000000000002".parse().unwrap()),
+            topic(
+                "0x0000000000000000000000000000000000000001"
+                    .parse()
+                    .unwrap(),
+            ),
+            topic(
+                "0x0000000000000000000000000000000000000002"
+                    .parse()
+                    .unwrap(),
+            ),
         ];
         let err = match extract_pool(&topics, &[0u8; 16], None, &event) {
             Ok(_) => panic!("expected malformed event data to fail"),

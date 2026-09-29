@@ -2,7 +2,7 @@
 // Exports `run` to render callTracer responses as a call tree
 // Depends on crate::config, crate::rpc, selectors, abi, serde_json, and alloy primitives
 use alloy::primitives::{B256, U256};
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -27,9 +27,9 @@ pub async fn run(
         rpc: rpc_override.map(String::from),
         provider: provider.map(String::from),
     };
-    let rpc_url = config.resolve_rpc(chain, &opts)?;
+    let rpc_urls = config.resolve_rpc_all(chain, &opts)?;
     let tx_hash = hash.parse::<B256>()?;
-    let trace = crate::rpc::debug_trace_transaction(&rpc_url, tx_hash)
+    let trace = crate::rpc::debug_trace_transaction_with_fallback(&rpc_urls, tx_hash)
         .await
         .map_err(|err| {
             let message = err.to_string().to_lowercase();
@@ -96,8 +96,7 @@ async fn resolve_all_selectors(
 ) -> SelectorMap {
     let mut names = SelectorMap::new();
     for (addr, selectors) in addr_selectors {
-        let resolved =
-            super::selectors::resolve_selector_names(chain, addr, selectors).await;
+        let resolved = super::selectors::resolve_selector_names(chain, addr, selectors).await;
         names.extend(resolved);
     }
     names
@@ -122,8 +121,14 @@ fn collect_call_lines(
     }
     let indent_str = "  ".repeat(indent);
     let call_type = call.get("type").and_then(Value::as_str).unwrap_or("CALL");
-    let from = call.get("from").and_then(Value::as_str).unwrap_or("<unknown>");
-    let to = call.get("to").and_then(Value::as_str).unwrap_or("<unknown>");
+    let from = call
+        .get("from")
+        .and_then(Value::as_str)
+        .unwrap_or("<unknown>");
+    let to = call
+        .get("to")
+        .and_then(Value::as_str)
+        .unwrap_or("<unknown>");
     let value_hex = call.get("value").and_then(Value::as_str).unwrap_or("0x0");
     let input = call.get("input").and_then(Value::as_str).unwrap_or("");
 
@@ -284,7 +289,10 @@ mod tests {
             ]
         });
         let lines = collect_call_lines(&payload, 0, 2, &names);
-        assert_eq!(lines[0], "CALL 0xdeadbeef -> 0xfeedface  doSomething()  value: 0  gas: 5000");
+        assert_eq!(
+            lines[0],
+            "CALL 0xdeadbeef -> 0xfeedface  doSomething()  value: 0  gas: 5000"
+        );
         assert_eq!(lines[1], "  input: 0xdeadc0de (4 bytes)");
         assert_eq!(lines[2], "  output: 0xbeef (2 bytes)");
         // Child has short input (< 4 bytes), no selector
@@ -317,7 +325,11 @@ mod tests {
             "error": "execution reverted"
         });
         let lines = collect_call_lines(&payload, 0, 2, &names);
-        assert!(lines.iter().any(|l| l.contains("revert: insufficient balance")));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("revert: insufficient balance"))
+        );
     }
 
     #[test]

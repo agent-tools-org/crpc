@@ -85,6 +85,7 @@ fn search_matches_name_fragment_and_chain_id() {
 
 #[test]
 fn load_prefers_fresh_cache_over_network() -> Result<()> {
+    let _env = crate::test_env_lock();
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)?
         .as_nanos();

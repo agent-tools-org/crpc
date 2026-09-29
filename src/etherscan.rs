@@ -124,6 +124,7 @@ mod tests {
 
     #[test]
     fn new_works_without_api_key() {
+        let _env = crate::test_env_lock();
         let _guard = env_lock().lock().expect("lock");
         let original = std::env::var("ETHERSCAN_API_KEY").ok();
         let original_home = std::env::var("HOME").ok();
@@ -143,6 +144,7 @@ mod tests {
 
     #[test]
     fn new_uses_config_api_key_when_env_missing() {
+        let _env = crate::test_env_lock();
         let _guard = env_lock().lock().expect("lock");
         let original = std::env::var("ETHERSCAN_API_KEY").ok();
         let original_home = std::env::var("HOME").ok();
@@ -179,6 +181,7 @@ mod tests {
 
     #[test]
     fn build_url_includes_expected_params() {
+        let _env = crate::test_env_lock();
         let client = EtherscanClient { client: reqwest::Client::new(), api_key: Some("secret".into()) };
         let url = client.build_url(8453, &[("module", "account"), ("action", "txlist"), ("address", "0xabc")]);
         assert_eq!(url, "https://api.etherscan.io/v2/api?chainid=8453&module=account&action=txlist&address=0xabc&apikey=secret");
@@ -186,6 +189,7 @@ mod tests {
 
     #[test]
     fn parses_gas_oracle_fields() {
+        let _env = crate::test_env_lock();
         let sample = serde_json::json!({
             "SafeGasPrice": "1",
             "ProposeGasPrice": "2",

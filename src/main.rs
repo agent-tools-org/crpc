@@ -456,6 +456,13 @@ async fn main() -> eyre::Result<()> {
     }
 }
 
+/// Serializes tests that read or mutate process-wide env vars (HOME, API keys).
+#[cfg(test)]
+pub(crate) fn test_env_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::Cli;

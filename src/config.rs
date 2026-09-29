@@ -470,6 +470,7 @@ mod tests {
 
     #[test]
     fn built_in_defaults_resolve() -> Result<()> {
+        let _env = crate::test_env_lock();
         let _home = HomeGuard::set("/tmp/crpc-test-no-config");
         let config = Config::load()?;
         assert_eq!(
@@ -481,6 +482,7 @@ mod tests {
 
     #[test]
     fn resolve_rpc_uses_env() -> Result<()> {
+        let _env = crate::test_env_lock();
         let _home = HomeGuard::set("/tmp/crpc-test-no-config");
         let _guard = EnvGuard::set("CRPC_ETH_RPC", "https://env.rpc");
         let config = Config::load()?;
@@ -493,6 +495,7 @@ mod tests {
 
     #[test]
     fn config_file_overrides_builtin() -> Result<()> {
+        let _env = crate::test_env_lock();
         let tmp = env::temp_dir().join(format!(
             "crpc_test_{}",
             SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
@@ -514,6 +517,7 @@ mod tests {
 
     #[test]
     fn rpc_override_wins() -> Result<()> {
+        let _env = crate::test_env_lock();
         let config = test_config(
             "foo",
             test_chain(1, &[("a", "https://a")], Some(&["a"])),
@@ -529,6 +533,7 @@ mod tests {
 
     #[test]
     fn provider_selects_named() -> Result<()> {
+        let _env = crate::test_env_lock();
         let config = test_config(
             "foo",
             test_chain(
@@ -548,6 +553,7 @@ mod tests {
 
     #[test]
     fn env_var_expansion() -> Result<()> {
+        let _env = crate::test_env_lock();
         let _guard = EnvGuard::set("CRPC_TEST_KEY", "mykey123");
         let config = test_config(
             "foo",
@@ -567,6 +573,7 @@ mod tests {
 
     #[test]
     fn env_var_missing_skips_provider() -> Result<()> {
+        let _env = crate::test_env_lock();
         let config = test_config(
             "foo",
             test_chain(
@@ -588,6 +595,7 @@ mod tests {
 
     #[test]
     fn priority_ordering() -> Result<()> {
+        let _env = crate::test_env_lock();
         let config = test_config(
             "foo",
             test_chain(
@@ -606,6 +614,7 @@ mod tests {
 
     #[test]
     fn resolve_rpc_all_returns_all_urls_in_priority_order() -> Result<()> {
+        let _env = crate::test_env_lock();
         let config = test_config(
             "foo",
             test_chain(
@@ -633,6 +642,7 @@ mod tests {
 
     #[test]
     fn resolve_rpc_all_respects_rpc_override() -> Result<()> {
+        let _env = crate::test_env_lock();
         let config = test_config(
             "foo",
             test_chain(1, &[("alpha", "https://alpha")], Some(&["alpha"])),
@@ -651,6 +661,7 @@ mod tests {
 
     #[test]
     fn default_provider_used() -> Result<()> {
+        let _env = crate::test_env_lock();
         let config = test_config(
             "foo",
             test_chain(
@@ -672,6 +683,7 @@ mod tests {
 
     #[test]
     fn expand_env_vars_no_vars() {
+        let _env = crate::test_env_lock();
         assert_eq!(
             expand_env_vars("https://plain.url"),
             Some("https://plain.url".into())
@@ -680,16 +692,19 @@ mod tests {
 
     #[test]
     fn expand_env_vars_unclosed_brace() {
+        let _env = crate::test_env_lock();
         assert_eq!(expand_env_vars("https://${BROKEN"), None);
     }
 
     #[test]
     fn expand_env_vars_empty_name() {
+        let _env = crate::test_env_lock();
         assert_eq!(expand_env_vars("https://${}"), None);
     }
 
     #[test]
     fn resolve_chain_id_builtins() -> Result<()> {
+        let _env = crate::test_env_lock();
         assert_eq!(resolve_chain_id("1")?, 1);
         assert_eq!(resolve_chain_id("eth")?, 1);
         assert_eq!(resolve_chain_id("base")?, 8453);

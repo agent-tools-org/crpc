@@ -371,19 +371,38 @@ where
     F: FnMut(String) -> Fut,
     Fut: Future<Output = Result<T>>,
 {
-    let mut last_error: Option<Report> = None;
+    let mut failures: Vec<(String, Report)> = Vec::new();
     for rpc_url in rpc_urls.iter().cloned() {
-        match f(rpc_url).await {
+        match f(rpc_url.clone()).await {
             Ok(value) => return Ok(value),
             Err(err) => {
                 if err.downcast_ref::<RevertError>().is_some() {
                     return Err(err);
                 }
-                last_error = Some(err);
+                failures.push((rpc_url, err));
             }
         }
     }
-    Err(last_error.unwrap_or_else(|| eyre!("no RPC URLs provided")))
+    if failures.len() <= 1 {
+        return Err(failures
+            .pop()
+            .map(|(_, err)| err)
+            .unwrap_or_else(|| eyre!("no RPC URLs provided")));
+    }
+    let lines = failures
+        .iter()
+        .map(|(url, err)| format!("  {}: {err}", rpc_host(url)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Err(eyre!("all {} RPCs failed:\n{lines}", failures.len()))
+}
+
+/// Host part of an RPC URL only: paths and query strings often carry API keys.
+fn rpc_host(rpc_url: &str) -> String {
+    Url::parse(rpc_url)
+        .ok()
+        .and_then(|url| url.host_str().map(String::from))
+        .unwrap_or_else(|| "<invalid url>".to_string())
 }
 
 #[cfg(test)]
@@ -391,6 +410,33 @@ mod tests {
     use super::*;
     use alloy::primitives::Bytes;
     use eyre::Result as EyreResult;
+
+    #[tokio::test]
+    async fn with_fallback_reports_every_failure_without_url_paths() {
+        let urls = vec![
+            "https://a.example/v2/SECRETKEY".to_string(),
+            "https://b.example/rpc".to_string(),
+        ];
+        let err = with_fallback(&urls, |url| async move {
+            Err::<(), _>(eyre!("boom from {}", rpc_host(&url)))
+        })
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("all 2 RPCs failed"));
+        assert!(err.contains("a.example: boom from a.example"));
+        assert!(err.contains("b.example: boom from b.example"));
+        assert!(!err.contains("SECRETKEY"));
+    }
+
+    #[tokio::test]
+    async fn with_fallback_single_url_keeps_original_error() {
+        let urls = vec!["https://only.example".to_string()];
+        let err = with_fallback(&urls, |_| async { Err::<(), _>(eyre!("original")) })
+            .await
+            .unwrap_err();
+        assert_eq!(err.to_string(), "original");
+    }
 
     #[test]
     fn make_provider_rejects_invalid_urls() {
